@@ -165,9 +165,17 @@ function confirmPurchase(r, plan, rid = '') {
 // ---------- おうちの人に払ってもらう ----------
 const randomId = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => 'abcdefghijkmnpqrstuvwxyz23456789'[b % 32]).join('');
 
+// 受け取りIDは7日で無効（サーバー側の claims と同じ期限）
+const CLAIM_TTL = 7 * 24 * 3600 * 1000;
+function currentClaim() {
+  const c = store.get('claimRid', null);
+  if (!c || typeof c !== 'object' || !/^[a-z0-9]{16}$/.test(c.rid || '') || Date.now() - c.at > CLAIM_TTL) return null;
+  return c.rid;
+}
+
 function askGuardian(r) {
-  const rid = store.get('claimRid', null) || randomId();
-  store.set('claimRid', rid);
+  const rid = currentClaim() || randomId();
+  if (rid !== currentClaim()) store.set('claimRid', { rid, at: Date.now() });
   const url = `${ORIGIN}/#/buy/${rid}`;
   const text = `「${SITE.quizName}」の完全版（${SITE.premiumPrice}円）を買ってもらえませんか？ このリンクから支払うと、私のスマホで読めるようになります`;
   track('paywall', 'ask');
@@ -200,7 +208,7 @@ export async function viewBuyFor(rid, render) {
 // 子どもの端末：おうちの人の支払いが終わったか確かめる（開いている間だけ、ときどき）
 let claimTimer = null;
 export function watchClaim(onUnlocked) {
-  const rid = store.get('claimRid', null);
+  const rid = currentClaim();
   if (!rid || hasPremium() || claimTimer) return;
   const started = Date.now();
   const tick = async () => {

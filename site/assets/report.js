@@ -5,7 +5,7 @@
 import { SITE } from './config.js';
 import { TYPES, AXES, PARAMS, PARAM_TEXT, LOVE_TYPES, isHidden, typeNo } from './data.js';
 import { titleOf, rarityOf, paramLevel, rankOf, LEVEL_NAMES, fullName } from './logic.js';
-import { charaSVG } from './chara.js';
+import { charaSVG, shade } from './chara.js';
 import { radarSVG, statValues, STAT_LABELS } from './radar.js';
 import { drawStoryCard, drawStatusCard, canvasToBlob } from './card.js';
 import { app, ORIGIN, esc, track, loadStats, render, toast, foot, brand, shareLinks, shareImageBlob, inAppHint, ICONS } from './ui.js';
@@ -60,7 +60,7 @@ function statusChapter(r, prem) {
       <span class="sv ${shown ? '' : 'masked'}" ${shown ? '' : 'data-paywall'}>${shown ? `${v}%` : '??%'}</span></li>`;
   }).join('');
   return `
-    <div class="radar-wrap">${radarSVG(values, { masked, color: getComputedStyle(document.documentElement).getPropertyValue('--type-deep').trim() || '#6C7FD8' })}</div>
+    <div class="radar-wrap">${radarSVG(values, { masked, color: shade(t.color, 0.32) })}</div>
     <ul class="stats">${rows}</ul>
     <p class="hint">${masked ? 'ランク（S〜D）は無料、パラメータの数値と解説は完全版で読めます。' : 'S〜D は、そのパラメータの高さのランクです。'}</p>
     <div class="nick-why">

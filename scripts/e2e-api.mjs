@@ -75,7 +75,7 @@ await b.waitForFunction(() => document.querySelector('.nickname') && !document.q
 const c = await phone();
 await detailResult(c, 7);
 const rid = 'kidrid2345678abc'.replace(/[^a-z0-9]/g, 'x').slice(0, 16);
-await c.evaluate((r) => localStorage.setItem('pz:claimRid', JSON.stringify(r)), rid);
+await c.evaluate((r) => localStorage.setItem('pz:claimRid', JSON.stringify({ rid: r, at: Date.now() })), rid);
 await c.reload();
 await c.waitForSelector('.nickname');
 execFileSync('npx', ['wrangler@4', 'd1', 'execute', 'ponkotsu-zukan', '--local', '--command', `INSERT OR REPLACE INTO claims (rid, token, created_at) VALUES ('${rid}', '${token}', ${Date.now()})`], {
