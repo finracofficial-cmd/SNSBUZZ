@@ -51,6 +51,22 @@ function chapter(no, title, body, { free = false, locked = false } = {}) {
   </section>`;
 }
 
+// RPG風の「必殺技」（いちばん高いパラメータ）と「弱点」（いちばん低いパラメータ）。ランクと同じく無料
+export function skillsOf(r) {
+  const order = r.params.map((v, k) => [v, k]).sort((x, y) => y[0] - x[0] || x[1] - y[1]);
+  const hi = order[0];
+  const lo = order[order.length - 1];
+  return hi[0] === lo[0] ? null : { skill: PARAMS[hi[1]], weak: PARAMS[lo[1]], hiRank: rankOf(hi[0]), loRank: rankOf(lo[0]) };
+}
+function skillsBox(r) {
+  const s = skillsOf(r);
+  if (!s) return '';
+  return `<div class="skills">
+    <div><span class="chip">必殺技</span><b>「${esc(s.skill.skill)}」</b><small>${esc(s.skill.name)} ${s.hiRank}</small></div>
+    <div><span class="chip soft">弱点</span><b>「${esc(s.weak.weak)}」</b><small>${esc(s.weak.name)} ${s.loRank}</small></div>
+  </div>`;
+}
+
 function statusChapter(r, prem) {
   const sampleText = PARAM_TEXT[r.nickname.param][paramLevel(r.params[r.nickname.param])];
   const values = statValues(r);
@@ -69,6 +85,7 @@ function statusChapter(r, prem) {
   return `
     <div class="radar-wrap">${radarSVG(values, { labels, masked, color: shade(t.color, 0.32) })}</div>
     <ul class="stats">${rows}</ul>
+    ${skillsBox(r)}
     <p class="hint">S〜D は高さの目安で、よい・わるいではありません。${masked ? 'ランクは無料、6つのパラメータの数値と解説は完全版で読めます。' : ''}</p>
     <div class="nick-why">
       <h3>二つ名「${esc(r.nickname.text)}」の理由</h3>
@@ -142,7 +159,8 @@ export async function viewReport(r, shareId) {
   const love = LOVE_TYPES[r.love];
   const name = fullName(r);
   const url = `${ORIGIN}/t/${typeNo(r.index).toLowerCase()}/?s=${shareId}`;
-  const text = `【${name}】だった！ 恋愛は「${love.name}」\n#${SITE.hashtag} あなたの二つ名は？`;
+  const sk = skillsOf(r);
+  const text = `【${name}】だった！ 恋愛は「${love.name}」${sk ? `\n必殺技「${sk.skill.skill}」／弱点「${sk.weak.weak}」` : ''}\n#${SITE.hashtag} あなたの二つ名は？`;
   await restorePurchase();
   const [stats, fetched, s] = await Promise.all([
     loadStats(),
