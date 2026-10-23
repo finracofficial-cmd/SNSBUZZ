@@ -495,3 +495,4 @@ table.kpi th:first-child, table.kpi td:first-child { text-align: left; }
 svg.daily { width: 100%; height: auto; }
 svg.daily .ax { font-size: 9px; fill: var(--sub); }
 table.kpi td small { color: var(--sub); font-size: 10px; margin-left: 2px; }
+.btn.wide { display: block; width: 100%; margin-top: 8px; }

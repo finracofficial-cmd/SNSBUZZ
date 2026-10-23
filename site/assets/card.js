@@ -810,3 +810,49 @@ export async function drawProfileCard({ r, nick, like, word }) {
   ctx.fillText(`${hostOf(SITE.origin)}  #${SITE.hashtag}`, W / 2, 1782);
   return canvas;
 }
+
+// 完全版の特典：ロック画面の壁紙 1170×2532（iPhone のロック画面の比率）。
+// 上の3割は時計、下の1割は通知とボタンが重なるので、キャラは真ん中より少し下に置く。
+export async function drawWallpaper(r) {
+  const t = TYPES[r.index];
+  const W = 1170;
+  const H = 2532;
+  const [canvas, ctx] = newCanvas(W, H);
+  const nickname = r.nickname?.text || '';
+  await ensureFonts(`${SITE.name}${t.label}${nickname}${t.catch}`);
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, tint(t.color, 0.82));
+  bg.addColorStop(0.55, tint(t.color, 0.55));
+  bg.addColorStop(1, tint(t.color, 0.3));
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+  // 水玉と星
+  for (let i = 0; i < 46; i++) {
+    const x = (i * 271 + 40) % W;
+    const y = (i * 557 + 90) % H;
+    ctx.fillStyle = i % 3 ? 'rgba(255,255,255,.35)' : `${shade(t.color, 0.1)}33`;
+    ctx.beginPath();
+    ctx.arc(x, y, 10 + (i % 5) * 7, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // キャラの後ろの丸
+  ctx.fillStyle = 'rgba(255,253,249,.75)';
+  ctx.beginPath();
+  ctx.arc(W / 2, 1420, 430, 0, Math.PI * 2);
+  ctx.fill();
+  const img = await loadImage(charaDataURL(r.index));
+  ctx.drawImage(img, W / 2 - 380, 1040, 760, 760);
+  ctx.textAlign = 'center';
+  if (nickname) {
+    ctx.fillStyle = shade(t.color, 0.4);
+    fitFont(ctx, nickname, 800, 62, 36, W - 240);
+    ctx.fillText(nickname, W / 2, 1980);
+  }
+  ctx.fillStyle = INK;
+  fitFont(ctx, t.label, 800, 92, 50, W - 200);
+  ctx.fillText(t.label, W / 2, nickname ? 2085 : 2040);
+  ctx.font = `500 34px ${FONT}`;
+  ctx.fillStyle = shade(t.color, 0.45);
+  ctx.fillText(SITE.name, W / 2, nickname ? 2150 : 2110);
+  return canvas;
+}

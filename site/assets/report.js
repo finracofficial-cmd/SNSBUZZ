@@ -7,7 +7,7 @@ import { TYPES, AXES, PARAMS, PARAM_TEXT, LOVE_TYPES, isHidden, typeNo } from '.
 import { titleOf, rarityOf, paramLevel, rankOf, LEVEL_NAMES, fullName, skillsOf } from './logic.js';
 import { charaSVG, shade } from './chara.js';
 import { radarSVG, statValues, statLabels } from './radar.js';
-import { drawStoryCard, drawStatusCard, canvasToBlob } from './card.js';
+import { drawStoryCard, drawStatusCard, drawWallpaper, canvasToBlob } from './card.js';
 import { app, ORIGIN, esc, track, loadStats, render, toast, foot, brand, shareLinks, shareImageBlob, inAppHint, ICONS, navNow, busy } from './ui.js';
 import { openPaywall, fetchPremium, hasPremium, previewUnlocked, watchClaim, premiumStatus, maybeShowAfterPurchase, restorePurchase, hasGift, openGift, priceOf } from './premium.js';
 import { openInviteModal, openGroupCreate, invitePairBox, openQuizCreate } from './social.js';
@@ -200,6 +200,7 @@ export async function viewReport(r, shareId) {
         <button class="btn sub small" data-card="status">${prem ? '' : ICONS.lock}ステータスカード</button>
         <button class="btn sub small" data-prof>プロフ帳カード</button>
       </div>
+      <button class="btn sub small wide" data-card="wallpaper">${prem ? '' : ICONS.lock}ロック画面の壁紙（完全版の特典）</button>
     </section>
     ${failed
       ? `<div class="paynote">完全版の読みこみに失敗しました（購入情報はこの端末に残っています）。<button class="btn sub small" data-reload>もう一度読みこむ</button></div>`
@@ -249,16 +250,19 @@ export async function viewReport(r, shareId) {
   app.querySelector('[data-prof]').addEventListener('click', () => openProfileCard(r));
   app.querySelectorAll('[data-card]').forEach((b) =>
     b.addEventListener('click', () => {
-      if (b.dataset.card === 'status' && !prem) {
+      const card = b.dataset.card;
+      if ((card === 'status' || card === 'wallpaper') && !prem) {
         openPaywall(r);
         return;
       }
       busy(b, async () => {
         toast('画像をつくっています…');
-        const canvas = b.dataset.card === 'status'
+        const canvas = card === 'status'
           ? await drawStatusCard({ ...r, title, rarity, gold: true })
-          : await drawStoryCard({ ...r, title, rarity, nickname: r.nickname.text, loveName: love.name, gold: !!prem });
-        track('share', b.dataset.card === 'status' ? 'status-image' : 'nick-image');
+          : card === 'wallpaper'
+            ? await drawWallpaper(r)
+            : await drawStoryCard({ ...r, title, rarity, nickname: r.nickname.text, loveName: love.name, gold: !!prem });
+        track('share', { status: 'status-image', wallpaper: 'wallpaper' }[card] || 'nick-image');
         await shareImageBlob(await canvasToBlob(canvas), { name: `ponkotsu-${typeNo(r.index)}-${b.dataset.card}.png`, text: `${text}\n${url}`, alt: `${name}のシェア画像` });
       });
     }),
