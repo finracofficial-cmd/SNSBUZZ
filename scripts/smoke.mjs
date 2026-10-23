@@ -72,11 +72,12 @@ async function saveModalImage(page, name) {
 }
 
 // 有料の本文がDOMに入っていないか（モザイクの下にも置かない）
-// （「本当のあなた」の冒頭38字は予告として無料で見せているので、それより後ろで確かめる）
+// （「本当のあなた」の1文目は予告として無料で見せているので、2文目で確かめる）
 const premiumSnippets = [
-  ...Object.values(PREMIUM).map((p) => p.deep.slice(45, 70)),
-  ...Object.values(PREMIUM).flatMap((p) => [p.loveDeep, p.next, p.letter].map((s) => s.slice(8, 30))),
-  ...PARAM_DETAIL.flat().map((s) => s.slice(8, 30)),
+  ...Object.values(PREMIUM).map((p) => p.deep.slice(p.deep.indexOf('。') + 1).slice(0, 25)),
+  ...Object.values(PREMIUM).flatMap((p) => [p.loveDeep, p.next, p.letter, ...p.growth.map((g) => g.body ?? g)].map((s) => s.slice(8, 30))),
+  // パラメータの解説は、二つ名の1項目だけ前半が見本として無料。後半で確かめる
+  ...PARAM_DETAIL.flat().map((s) => s.slice(-24, -4)),
   ...LOVE_DETAIL.map((l) => l.detail.slice(8, 30)),
 ];
 
@@ -141,7 +142,7 @@ await a.click('.modal .linkish[data-close]');
 await a.click('[data-card="nick"]');
 await saveModalImage(a, '09-nick-card');
 await a.click('[data-card="status"]');
-check(!!(await a.$('.modal:not([hidden]) .includes')), 'ロック中のステータスカードで購入案内が出ない');
+check(!!(await a.waitForSelector('.modal:not([hidden]) .includes', { timeout: 3000 }).catch(() => null)), 'ロック中のステータスカードで購入案内が出ない');
 await a.click('.modal .linkish[data-close]');
 
 // 友達をさそう

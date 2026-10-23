@@ -5,12 +5,13 @@ import { compatOf, decodeResult, encodeResult, quickCodeOf, resultFromSums, axis
 import { charaSVG } from './chara.js';
 import { drawPairCard, canvasToBlob } from './card.js';
 import { optionOrder } from './quiz.js';
-import { app, ORIGIN, esc, cleanName, store, track, api, render, toast, openModal, closeModal, foot, brand, shareLinks, shareImageBlob } from './ui.js';
+import { app, ORIGIN, esc, cleanName, store, track, api, render, toast, openModal, closeModal, foot, brand, shareLinks, shareImageBlob, navNow, busy } from './ui.js';
 
 // ---------- 出会ったタイプ（図鑑のコンプリート用） ----------
-export function addFriend(name, code) {
+export function addFriend(rawName, code) {
   const r = decodeResult(code);
   if (!r) return;
+  const name = cleanName(rawName) || '友達';
   // 同じ人（同じ名前で、かんたん診断の結果も同じ）は1人にまとめる。くわしい診断のコードがあればそちらを残す
   const same = (f) => f.name === name && quickCodeOf(f.code) === quickCodeOf(code);
   const list = store.get('friends', []);
@@ -77,8 +78,9 @@ export function openInviteModal(mine) {
     <h2 class="sheet-title">友達と相性をくらべる</h2>
     <p class="hint">リンクを送ると、友達が診断したあとに、ふたりの相性が出ます。</p>
     <label class="field">あなたのニックネーム（相手に表示されます）
-      <input id="invite-name" maxlength="10" placeholder="例：ゆい" value="${esc(store.get('nick', ''))}">
+      <input id="invite-name" maxlength="10" placeholder="例：ゆう" value="${esc(store.get('nick', ''))}">
     </label>
+    <p class="hint">本名は入れないでね。</p>
     <div id="invite-links"></div>
     <button class="btn" id="invite-make">おさそいリンクをつくる</button>
     <button class="btn sub" data-close>とじる</button>`);
@@ -123,17 +125,19 @@ export function viewPair(codeA, codeB, nameA, nameB) {
       ${shareLinks({ text, url: sendUrl, channelPrefix: 'pair:' }).html}
     </section>
     <div class="card"><h2>ふたりの4つの軸</h2>${pairAxes(a, b, nameA, nameB)}</div>
-    <div class="card"><h2>${esc(nameA)}から見た${esc(nameB)}</h2><p>${esc(tb.toriset.do[0])}。${esc(tb.toriset.dont[0])}は、ちょっと苦手。</p></div>
-    <div class="card"><h2>${esc(nameB)}から見た${esc(nameA)}</h2><p>${esc(ta.toriset.do[0])}。${esc(ta.toriset.dont[0])}は、ちょっと苦手。</p></div>
+    <div class="card"><h2>${esc(nameB)}のトリセツ（${esc(nameA)}へ）</h2><p>うれしいこと：${esc(tb.toriset.do[0])}</p><p>ちょっと苦手：${esc(tb.toriset.dont[0])}</p></div>
+    <div class="card"><h2>${esc(nameA)}のトリセツ（${esc(nameB)}へ）</h2><p>うれしいこと：${esc(ta.toriset.do[0])}</p><p>ちょっと苦手：${esc(ta.toriset.dont[0])}</p></div>
     <button class="btn" data-go="#/q">自分も診断する</button>
     <button class="btn sub" data-go="#/zukan">図鑑をみる</button>
     ${foot()}`, a.index);
-  app.querySelector('[data-pair-card]').onclick = async () => {
-    toast('画像をつくっています…');
-    const canvas = await drawPairCard({ a, b, nameA, nameB, compat: c });
-    track('share', 'pair-image');
-    await shareImageBlob(await canvasToBlob(canvas), { name: 'ponkotsu-pair.png', text: `${text}\n${sendUrl}`, alt: 'ふたりの相性カード' });
-  };
+  const pairButton = app.querySelector('[data-pair-card]');
+  pairButton.onclick = () =>
+    busy(pairButton, async () => {
+      toast('画像をつくっています…');
+      const canvas = await drawPairCard({ a, b, nameA, nameB, compat: c });
+      track('share', 'pair-image');
+      await shareImageBlob(await canvasToBlob(canvas), { name: 'ponkotsu-pair.png', text: `${text}\n${sendUrl}`, alt: 'ふたりの相性カード' });
+    });
 }
 
 function pairAxes(a, b, nameA, nameB) {
@@ -153,7 +157,7 @@ const ROLES = [
   { name: 'ムードメーカー', score: (s) => s[1] + s[2] },
   { name: '切り込み隊長', score: (s) => s[0] + s[2] },
   { name: '参謀', score: (s) => -s[2] - s[3] },
-  { name: '癒し担当', score: (s) => -s[0] + s[3] },
+  { name: '癒やし担当', score: (s) => -s[0] + s[3] },
   { name: '聞き役', score: (s) => -s[1] - s[3] },
   { name: '自由人', score: (s) => s[2] + s[3] - s[1] },
 ];
@@ -174,12 +178,21 @@ export function groupRoles(members) {
   return out;
 }
 
+const GROUP_ERRORS = {
+  rate: '少し時間をおいて、もう一度ためしてね',
+  ng: '使えない言葉が入っています。ほかの名前にしてね',
+  full: 'このグループは満員です',
+};
+const randomId = (n) =>
+  Array.from(crypto.getRandomValues(new Uint8Array(n)), (b) => 'abcdefghijkmnpqrstuvwxyz23456789'[b % 32]).join('');
+
 export function openGroupCreate() {
   const sheet = openModal(`
     <h2 class="sheet-title">グループ診断をつくる</h2>
-    <p class="hint">クラス・部活・サークル・推し仲間で。リンクを送ると、みんなのタイプと役割が1ページにまとまります。</p>
-    <label class="field">グループの名前<input id="group-name" maxlength="20" placeholder="例：2年3組"></label>
-    <p class="hint" id="group-msg"></p>
+    <p class="hint">仲良しグループ・部活・推し仲間で。リンクを送ると、みんなのタイプと役割が1ページにまとまります。</p>
+    <label class="field">グループの名前<input id="group-name" maxlength="20" placeholder="例：いつメン"></label>
+    <p class="hint">グループ名に、学校名・クラス名・本名は入れないでね。リンクを知っている人は誰でも見られます。</p>
+    <p class="hint err" id="group-msg" role="alert"></p>
     <button class="btn" id="group-make">つくる</button>
     <button class="btn sub" data-close>とじる</button>`);
   sheet.querySelector('#group-make').onclick = async () => {
@@ -190,13 +203,25 @@ export function openGroupCreate() {
     }
     const res = await api('groups', { method: 'POST', body: { name } });
     if (!res || res.error) {
-      sheet.querySelector('#group-msg').textContent = res?.error === 'rate' ? '少し時間をおいてもう一度試してね' : 'いまはグループを作れません（公開版で使えます）';
+      sheet.querySelector('#group-msg').textContent = GROUP_ERRORS[res?.error] || 'いまはグループを作れません。時間をおいて、もう一度ためしてね';
       return;
     }
+    // 作った人だけが持つ管理キー（メンバーを外す・グループを消す）
+    store.set(`groupAdmin:${res.id}`, res.admin);
     track('group', 'create');
     closeModal();
     location.hash = `#/g/${res.id}`;
   };
+}
+
+async function leaveGroup(id, body, msg) {
+  const res = await api(`groups/${id}`, { method: 'DELETE', body });
+  if (!res || res.error) {
+    toast(GROUP_ERRORS[res?.error] || 'うまくいきませんでした');
+    return false;
+  }
+  toast(msg);
+  return true;
 }
 
 export async function viewGroup(id) {
@@ -204,10 +229,13 @@ export async function viewGroup(id) {
     location.hash = '#/';
     return;
   }
+  const gen = navNow();
   render(`${brand()}<div class="loading small">グループを読みこみ中…<div class="dots"><i></i><i></i><i></i></div></div>`);
-  const g = await api(`groups/${id}?me=${encodeURIComponent(store.get('memberId', '') || '')}`);
+  const admin = store.get(`groupAdmin:${id}`, null);
+  const g = await api(`groups/${id}?me=${encodeURIComponent(store.get('memberId', '') || '')}${admin ? `&admin=${encodeURIComponent(admin)}` : ''}`);
+  if (gen !== navNow()) return;
   if (!g || g.error) {
-    render(`${brand()}<div class="card"><h2>グループが見つかりません</h2><p>リンクが古いか、まだ公開版でしか使えない機能です。</p></div>
+    render(`${brand()}<div class="card"><h2>グループが見つかりません</h2><p>リンクがまちがっているか、グループの期限（作成から90日）が過ぎているか、作った人がグループを消しました。</p></div>
       <button class="btn" data-go="#/q">診断する</button>${foot()}`);
     return;
   }
@@ -238,36 +266,61 @@ export async function viewGroup(id) {
     </section>
     ${joined ? '' : mine
       ? `<div class="card"><h2>このグループに参加する</h2>
-          <label class="field">ニックネーム<input id="join-name" maxlength="10" value="${esc(store.get('nick', ''))}" placeholder="例：ゆい"></label>
+          <label class="field">ニックネーム<input id="join-name" maxlength="10" value="${esc(store.get('nick', ''))}" placeholder="例：ゆう"></label>
+          <p class="hint">本名は入れないでね。グループのページには、ニックネームとかんたん診断のタイプだけが出ます。</p>
           <button class="btn" id="join">あなたのタイプで参加</button></div>`
       : `<div class="card"><h2>診断して参加しよう</h2><p>かんたん診断（12問・約1分）に答えると、このグループに参加できます。</p>
           <button class="btn" data-go="#/q">診断する</button></div>`}
     ${members.length ? `
     <div class="card"><h2>メンバー</h2><div class="members">${members.map((m) => `
-      <a class="member ${m.id === me ? 'mine' : ''}" href="#/t/${typeNo(m.result.index).toLowerCase()}">${charaSVG(m.result.index, { size: 64 })}<b>${esc(m.nick)}</b><small>${esc(TYPES[m.result.index].label)}</small></a>`).join('')}</div></div>
+      <div class="member-wrap"><a class="member ${m.id === me ? 'mine' : ''}" href="#/t/${typeNo(m.result.index).toLowerCase()}">${charaSVG(m.result.index, { size: 64 })}<b>${esc(m.nick)}</b><small>${esc(TYPES[m.result.index].label)}</small></a>
+      ${g.admin && m.id !== me ? `<button class="linkish small" data-kick="${esc(m.id)}" aria-label="${esc(m.nick)}をグループから外す">外す</button>` : ''}</div>`).join('')}</div></div>
     <div class="card"><h2>グループ内の役割</h2><ul class="roles">${roles.map((r) => `<li><span class="chip">${esc(r.role)}</span>${esc(r.member.nick)}</li>`).join('')}</ul></div>
     <div class="card"><h2>このグループをひとことで</h2>
       <p>${top[1] > 1 ? `いちばん多いのは「${esc(TYPES[top[0]].label)}」（${top[1]}人）。` : 'メンバー全員がちがうタイプの、バラエティ豊かなグループ。'}グループ全体を1人にすると「${esc(TYPES[groupType].label)}」っぽいチームです。</p>
       ${bestPair ? `<p>いちばん相性がいいのは <b>${esc(bestPair.a.nick)}</b> × <b>${esc(bestPair.b.nick)}</b>（${bestPair.c.score}%・${esc(bestPair.c.rank)}）。</p>` : ''}
     </div>` : ''}
-    <div class="card"><h2>メンバーを集める</h2>${shareLinks({ text: `「${g.name}」のグループ診断。みんなのポンコツタイプと役割がわかるよ`, url, channelPrefix: 'group:' }).html}</div>
+    <div class="card"><h2>メンバーを集める</h2>${shareLinks({ text: `「${g.name}」のグループ診断。みんなのポンコツタイプと役割がわかるよ`, url, channelPrefix: 'group:' }).html}
+      <p class="hint">このグループは ${new Date(g.expiresAt).toLocaleDateString('ja-JP')} に消えます。</p></div>
+    ${joined || g.admin ? `<div class="card"><h2>グループの設定</h2><div class="btn-col">
+      ${joined ? '<button class="btn sub small" data-leave>このグループから抜ける</button>' : ''}
+      ${g.admin ? '<button class="btn sub small" data-delete-group>グループを消す（作った人だけ）</button>' : ''}
+    </div></div>` : ''}
     ${foot()}`);
   const join = app.querySelector('#join');
   if (join) {
     join.onclick = async () => {
       const nick = cleanName(app.querySelector('#join-name').value) || 'ななし';
       store.set('nick', nick);
-      const memberId = me || Math.random().toString(36).slice(2, 12);
+      const memberId = me || randomId(12);
       store.set('memberId', memberId);
-      const res = await api(`groups/${id}`, { method: 'POST', body: { id: memberId, nick, code: mine.code } });
+      // グループには、かんたん診断の結果だけを送る（くわしい診断のパラメータは送らない）
+      const res = await api(`groups/${id}`, { method: 'POST', body: { id: memberId, nick, code: quickCodeOf(mine.code) } });
       if (!res || res.error) {
-        toast(res?.error === 'full' ? 'このグループは満員です' : '参加できませんでした');
+        toast(GROUP_ERRORS[res?.error] || '参加できませんでした');
         return;
       }
       track('group', 'join');
       viewGroup(id);
     };
   }
+  app.querySelector('[data-leave]')?.addEventListener('click', async () => {
+    if (!window.confirm('このグループから抜けますか？')) return;
+    if (await leaveGroup(id, { id: me }, 'グループから抜けました')) viewGroup(id);
+  });
+  app.querySelector('[data-delete-group]')?.addEventListener('click', async () => {
+    if (!window.confirm('グループを消しますか？ メンバー全員のページから消えます')) return;
+    if (await leaveGroup(id, { admin, all: true }, 'グループを消しました')) {
+      store.set(`groupAdmin:${id}`, null);
+      location.hash = '#/';
+    }
+  });
+  app.querySelectorAll('[data-kick]').forEach((b) =>
+    b.addEventListener('click', async () => {
+      if (!window.confirm('このメンバーをグループから外しますか？')) return;
+      if (await leaveGroup(id, { admin, member: b.dataset.kick }, 'メンバーを外しました')) viewGroup(id);
+    }),
+  );
 }
 
 
@@ -296,10 +349,11 @@ export function openQuizCreate(r) {
   }
   const sheet = openModal(`
     <h2 class="sheet-title">わたしクイズを出す</h2>
-    <p>友達が、あなたの答えを当てるクイズ（6問）。友達の点数はあなたに届いて、「一番わかってる人」ランキングになります。</p>
+    <p>友達が、あなたの答えを当てるクイズ（6問）。友達が結果のリンクを送り返してくれると、このスマホの成績表に並びます。</p>
     <label class="field">あなたのニックネーム（友達に表示されます）
-      <input id="quiz-name" maxlength="10" placeholder="例：ゆい" value="${esc(store.get('nick', ''))}">
+      <input id="quiz-name" maxlength="10" placeholder="例：ゆう" value="${esc(store.get('nick', ''))}">
     </label>
+    <p class="hint">本名は入れないでね。</p>
     <div id="quiz-links"></div>
     <button class="btn" id="quiz-make">クイズのリンクをつくる</button>
     <button class="btn sub" data-close>とじる</button>`);
@@ -344,7 +398,7 @@ export function viewFriendQuiz() {
       <h1 class="label">${esc(q.name)}さんのこと、<br>どれだけわかってる？</h1>
       <p>${esc(q.name)}さんが診断でどう答えたかを当ててね。全6問（5問＋タイプ当て）。</p>
       <label class="field">あなたのニックネーム（${esc(q.name)}さんに届きます）
-        <input id="fq-name" maxlength="10" value="${esc(fq.me)}" placeholder="例：みお"></label>
+        <input id="fq-name" maxlength="10" value="${esc(fq.me)}" placeholder="例：あお"></label>
       <button class="btn" data-fq-start>はじめる</button>
     </section>
     ${foot()}`);
@@ -398,7 +452,8 @@ function answerFriend(correct, button, correctSel) {
   app.querySelector(correctSel)?.classList.add('right');
   track('quiz', 'answer');
   toast(correct ? '正解！' : 'ざんねん…');
-  setTimeout(nextFriendQuestion, 900);
+  const gen = navNow();
+  setTimeout(() => gen === navNow() && nextFriendQuestion(), 900);
 }
 
 const QUIZ_RANKS = [

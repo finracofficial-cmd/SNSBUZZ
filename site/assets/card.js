@@ -2,7 +2,7 @@
 import { SITE } from './config.js';
 import { TYPES, AXES, LOVE_TYPES, isHidden, typeNo } from './data.js';
 import { charaDataURL, shade, tint } from './chara.js';
-import { statValues, STAT_LABELS } from './radar.js';
+import { statValues, statLabels } from './radar.js';
 
 export const FONT = '"M PLUS Rounded 1c", "Hiragino Maru Gothic ProN", "Hiragino Sans", "Noto Sans JP", sans-serif';
 const INK = '#3B2F33';
@@ -107,7 +107,7 @@ export async function drawStoryCard({ index, purity, title, rarity, gold = false
   canvas.width = W;
   canvas.height = H;
   const ctx = canvas.getContext('2d');
-  await ensureFonts(`${SITE.name}${t.label}${t.praise}${t.roast}${TYPES[t.best].label}${nickname}${loveName}わたしはタイプ診断した人の純度出現率レア度理論値相性恋愛あなたは何？二つ名%0123456789.No`);
+  await ensureFonts(`${SITE.name}${t.label}${t.praise}${t.roast}${TYPES[t.best].label}${nickname}${loveName}診断結果はタイプ診断した人の純度出現率レア度計算上の値相性恋愛あなたは何？二つ名%0123456789.No`);
 
   const bg = ctx.createLinearGradient(0, 0, 0, H);
   bg.addColorStop(0, tint(t.color, 0.72));
@@ -159,7 +159,7 @@ export async function drawStoryCard({ index, purity, title, rarity, gold = false
   ctx.textAlign = 'center';
   ctx.fillStyle = INK;
   ctx.font = `500 46px ${FONT}`;
-  ctx.fillText('わたしは…', W / 2, 250);
+  ctx.fillText('診断結果は…', W / 2, 250);
 
   const img = await loadImage(charaDataURL(index));
   ctx.drawImage(img, W / 2 - 290, 270, 580, 580);
@@ -207,7 +207,7 @@ export async function drawStoryCard({ index, purity, title, rarity, gold = false
   // 数字のタイル
   const tiles = [
     ['ポンコツ純度', `${purity}%`, title],
-    loveName ? ['恋愛タイプ', loveName, 'くわしい診断'] : ['レア度', `${rarity.pct.toFixed(1)}%`, rarity.source === 'actual' ? '診断した人の中で' : '理論値'],
+    loveName ? ['恋愛タイプ', loveName, 'くわしい診断'] : ['レア度', `${rarity.pct.toFixed(1)}%`, rarity.source === 'actual' ? '診断した人の中で' : '計算上の値'],
     ['相性◎', TYPES[t.best].label, TYPES[t.best].chara],
   ];
   const tw = (W - 240 - 40) / 3;
@@ -279,7 +279,8 @@ export async function drawOgCard(index) {
   ctx.fillText(t.label, 556, 260);
   ctx.font = `500 34px ${FONT}`;
   let y = 340;
-  for (const line of wrap(ctx, t.roast, W - 640).slice(0, 3)) {
+  // OGP は痛い一行だけを出すので、頭の「でも」を外す（それだけだと前の文が欠けて見える）
+  for (const line of wrap(ctx, t.roast.replace(/^でも、?/, ''), W - 640).slice(0, 3)) {
     ctx.fillText(line, 560, y);
     y += 50;
   }
@@ -576,7 +577,7 @@ export async function drawFeatureOg(kind) {
   const H = 630;
   const [canvas, ctx] = newCanvas(W, H);
   const head = kind === 'group' ? 'グループ診断' : 'ふたりの相性';
-  const sub = kind === 'group' ? 'みんなのタイプと役割が1ページに' : 'ふたりの相性は何％？';
+  const sub = kind === 'group' ? 'みんなのタイプと役割が1ページに' : 'ふたりの相性は何%？';
   await ensureFonts(`${SITE.name}${SITE.quizName}${head}${sub}`);
   ctx.fillStyle = '#FFF4E8';
   ctx.fillRect(0, 0, W, H);
@@ -610,9 +611,10 @@ export async function drawStatusCard(r) {
   const H = 1920;
   const [canvas, ctx] = newCanvas(W, H);
   const values = statValues(r);
+  const labels = statLabels(r);
   const love = LOVE_TYPES[r.love];
   const name = r.nickname?.text || '';
-  await ensureFonts(`${SITE.name}${t.label}${name}${love?.name || ''}${STAT_LABELS.join('')}ステータス恋愛タイプ完全版あなたは何タイプ？SABCD%0123456789`);
+  await ensureFonts(`${SITE.name}${t.label}${name}${love?.name || ''}${labels.join('')}ステータス恋愛タイプ完全版あなたは何タイプ？SABCD%0123456789`);
   frame(ctx, W, H, t.color);
   const g = ctx.createLinearGradient(0, 0, W, H);
   ['#B8862B', '#F7E08A', '#C9973A', '#FFF1B8', '#B8862B'].forEach((c, k) => g.addColorStop(k / 4, c));
@@ -670,7 +672,7 @@ export async function drawStatusCard(r) {
   ctx.lineWidth = 6;
   ctx.strokeStyle = shade(t.color, 0.3);
   ctx.stroke();
-  STAT_LABELS.forEach((l, k) => {
+  labels.forEach((l, k) => {
     const [x, y] = pt(k, 1.2);
     ctx.textAlign = Math.abs(x - cx) < 6 ? 'center' : x > cx ? 'left' : 'right';
     ctx.fillStyle = INK;
@@ -683,7 +685,7 @@ export async function drawStatusCard(r) {
 
   // ランクの一覧（2列）
   const rank = (v) => (v >= 85 ? 'S' : v >= 67 ? 'A' : v >= 42 ? 'B' : v >= 25 ? 'C' : 'D');
-  STAT_LABELS.forEach((l, k) => {
+  labels.forEach((l, k) => {
     const col = k < 5 ? 0 : 1;
     const row = k % 5;
     const x = 150 + col * 420;

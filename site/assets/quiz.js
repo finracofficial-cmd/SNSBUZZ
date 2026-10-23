@@ -1,10 +1,10 @@
 // 質問の画面。かんたん診断（12問）と、くわしい診断（かんたんの続き＋24問・3章）。
 // かんたん診断の答えは保存しておき、くわしい診断はその続きから始められる。
 // 進捗は36問の通し番号で出す（くわしい診断を続きから始めると、最初から33%進んだ状態になる）。
-import { QUESTIONS, PARAM_QUESTIONS, CHAPTERS, PARAMS, isHidden } from './data.js';
-import { judge, encodeResult } from './logic.js';
+import { TYPES, QUESTIONS, PARAM_QUESTIONS, CHAPTERS, PARAMS, PARAM_MAX, LOVE_TYPES, loveIndexOf, isHidden } from './data.js';
+import { judge, encodeResult, rankOf, paramLevel, LEVEL_NAMES } from './logic.js';
 import { charaSVG } from './chara.js';
-import { app, esc, store, track, loadStats, render, toast } from './ui.js';
+import { app, esc, store, track, loadStats, render, toast, navNow } from './ui.js';
 
 // 選択肢の並びが「弱い→強い」の順に見えないよう、質問ごとに固定の順でシャッフルする
 function shuffled(n, seedBase) {
@@ -61,24 +61,43 @@ function viewChapterIntro(c) {
       <p class="lead">くわしい診断</p>
       <h1>${c < 0 ? 'まずは、あなたのタイプから' : esc(CHAPTERS[c].title)}</h1>
       <p>${c < 0
-        ? 'かんたん診断の12問のあと、3つの章で24問。あわせて約4分です。'
+        ? 'かんたん診断の12問のあと、3つのパートで24問。あわせて約4分です。'
         : `${PARAMS[c * 2].name}と${PARAMS[c * 2 + 1].name}を測ります（8問）。`}</p>
       ${s.continued && c === 0 ? '<p class="hint">かんたん診断の答えを引きつぐので、ここから24問です。</p>' : ''}
       <button class="btn" data-quiz-next>はじめる</button>
     </section>`);
 }
 
-// 章のおわりのごほうび
+// ここまでの答えから、パラメータ1つの値（0〜100）を出す
+function paramPct(k) {
+  let raw = 0;
+  PARAM_QUESTIONS.forEach((q, i) => {
+    if (q.param === k && session.param[i] != null) raw += q.options[session.param[i]].v;
+  });
+  return Math.round((raw / PARAM_MAX) * 100);
+}
+
+// 章のおわりのごほうび：その章で測った2つのパラメータのランクをシールで貼る。
+// パート2のあとは恋愛タイプ（恋愛積極度・ヤキモチ度・さみしがり度で決まる）も先に見せる。
 function viewChapterDone(c) {
   const s = session;
+  const stickers = [c * 2, c * 2 + 1].map((k) => {
+    const v = paramPct(k);
+    return `<span class="sticker"><b class="srank r${rankOf(v)}">${rankOf(v)}</b>${esc(PARAMS[k].name)}<small>${LEVEL_NAMES[paramLevel(v)]}</small></span>`;
+  }).join('');
+  const love = c === 1 ? LOVE_TYPES[loveIndexOf([0, 1, 2].map(paramPct))] : null;
+  const type = s.axis.length ? judge({ axis: s.axis }).index : null;
   render(`
     <div class="progress detail" aria-hidden="true"><i style="width:${((s.offset + s.pos) / TOTAL) * 100}%"></i></div>
     <section class="chapter done">
-      <div class="stamp">${charaSVG(Number(s.axis.length ? judge({ axis: s.axis }).index : 3), { size: 120 })}</div>
+      <div class="stamp">${charaSVG(type ?? 3, { size: 120 })}</div>
       <p class="lead">${esc(CHAPTERS[c].title)}　クリア</p>
       <h1>${esc(CHAPTERS[c].done)}</h1>
-      <p class="hint">${c < CHAPTERS.length - 1 ? `のこり${CHAPTERS.length - 1 - c}章（${(CHAPTERS.length - 1 - c) * 8}問）` : 'レポートを作成します'}</p>
-      <button class="btn" data-quiz-next>${c < CHAPTERS.length - 1 ? 'つぎの章へ' : '結果を見る'}</button>
+      <div class="got">${stickers}</div>
+      ${love ? `<p class="reveal">恋愛タイプが決まりました<b>${esc(love.name)}</b></p>` : ''}
+      ${c === CHAPTERS.length - 1 && type != null ? `<p class="reveal">二つ名が決まりました<b>？？？の${esc(TYPES[type].label)}</b></p>` : ''}
+      <p class="hint">${c < CHAPTERS.length - 1 ? `のこり${CHAPTERS.length - 1 - c}パート（${(CHAPTERS.length - 1 - c) * 8}問）` : 'レポートを作成します'}</p>
+      <button class="btn" data-quiz-next>${c < CHAPTERS.length - 1 ? 'つぎのパートへ' : '結果を見る'}</button>
     </section>`);
 }
 
@@ -91,7 +110,7 @@ function viewStep() {
     .join('');
   const total = s.mode === 'detail' ? TOTAL : QUESTIONS.length;
   const n = s.offset + s.pos + 1;
-  const where = kind === 'param' ? CHAPTERS[q.chapter].title : s.mode === 'detail' ? 'タイプ診断' : 'かんたん診断';
+  const where = kind === 'param' ? CHAPTERS[q.chapter].title : s.mode === 'detail' ? 'かんたん診断パート' : 'かんたん診断';
   render(`
     <div class="progress ${s.mode}" aria-hidden="true"><i style="width:${((n - 1) / total) * 100}%"></i></div>
     <div class="qhead"><span>${esc(where)}　${n} / ${total}</span>${s.pos > 0 ? '<button data-back>← もどる</button>' : '<a href="#/">やめる</a>'}</div>
@@ -121,11 +140,13 @@ export function handleQuizClick(e) {
 }
 
 function choose(choice, button) {
+  const s = session;
+  const at = s.pos;
   button.classList.add('on');
-  app.querySelectorAll('.opt').forEach((b) => (b.disabled = true));
+  app.querySelectorAll('.opt, [data-back]').forEach((b) => (b.disabled = true));
   setTimeout(() => {
-    const s = session;
-    if (!s) return;
+    // そのあいだに「もどる」や別の画面へ移っていたら、何もしない
+    if (session !== s || s.pos !== at) return;
     const [kind, i] = s.steps[s.pos];
     (kind === 'axis' ? s.axis : s.param)[i] = choice;
     s.pos++;
@@ -167,16 +188,19 @@ function finish() {
   store.set('mine', { index: r.index, code, shareId, mode: r.mode });
   if (isHidden(r.index)) store.set('gotHidden', [...new Set([...store.get('gotHidden', []), r.index])]);
   loadStats();
-  render(`<div class="loading">${s.mode === 'quick' ? 'ポンコツ成分を分析中…' : 'あなただけのレポートを作成中…'}
+  const gen = navNow();
+  render(`<div class="loading">${s.mode === 'quick' ? 'ポンコツ成分を分析中…' : 'あなたのレポートを作成中…'}
     <div class="analyzing">${r.axisPct.map((p, k) => `<div><i style="--w:${p}%;animation-delay:${k * 0.18}s"></i></div>`).join('')}
     ${r.params ? r.params.map((p, k) => `<div><i style="--w:${Math.max(p, 6)}%;animation-delay:${0.72 + k * 0.12}s"></i></div>`).join('') : ''}</div></div>`);
   const pendingGroup = store.get('pendingGroup', null);
   setTimeout(() => {
+    if (gen !== navNow()) return;
+    // 結果へは履歴を置きかえて移る（ブラウザの「戻る」で診断が最初から始まらないように）
     if (pendingGroup) {
       store.set('pendingGroup', null);
-      location.hash = `#/g/${pendingGroup.id}`;
+      location.replace(`#/g/${pendingGroup.id}`);
     } else {
-      location.hash = `#/r/${code}/${shareId}`;
+      location.replace(`#/r/${code}/${shareId}`);
     }
   }, s.mode === 'quick' ? 1500 : 2100);
 }

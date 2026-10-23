@@ -7,7 +7,7 @@ import { titleOf, rarityOf, priorDistribution, compatRanking, compatOf, axisLine
 import { charaSVG } from './chara.js';
 import { radarSVG } from './radar.js';
 import { drawStoryCard, drawLabelCard, canvasToBlob } from './card.js';
-import { app, ORIGIN, esc, store, track, loadStats, render, toast, foot, brand, shareLinks, shareImageBlob, openModal, inAppHint } from './ui.js';
+import { app, ORIGIN, esc, store, track, loadStats, render, toast, foot, brand, shareLinks, shareImageBlob, openModal, inAppHint, navNow, busy } from './ui.js';
 import { invitePairBox, openInviteModal, openGroupCreate, openQuizCreate, friends } from './social.js';
 import { openProfileCard } from './profile.js';
 
@@ -15,9 +15,11 @@ const noLabel = (index) => (isHidden(index) ? `隠しタイプ ${typeNo(index)}`
 export const typePath = (index) => `#/t/${typeNo(index).toLowerCase()}`;
 
 const shareUrl = (index, shareId) => `${ORIGIN}/t/${typeNo(index).toLowerCase()}/?s=${shareId}`;
+// 「でも…」で始まる痛い一行は、それだけだと前の文が欠けて見えるので、頭の「でも」を外して使う
+export const roastAlone = (t) => t.roast.replace(/^でも、?/, '');
 function shareText(r) {
   const t = TYPES[r.index];
-  return `私は【${t.label}（${titleOf(r.purity)}）】でした。ポンコツ純度${r.purity}%\n${t.roast}\n#${SITE.hashtag} あなたは何タイプ？`;
+  return `【${t.label}】だった！（${titleOf(r.purity)}・ポンコツ純度${r.purity}%）\n${roastAlone(t)}\n#${SITE.hashtag} あなたは何タイプ？`;
 }
 
 // ---------- 成分表（食品表示のパロディ） ----------
@@ -65,7 +67,7 @@ function compatSection(index, r) {
     <span class="rs"><i style="width:${score}%"></i></span><b>${score}%</b></a></li>`;
   return `<section class="card" id="sec-compat"><h2>相性</h2>
     <div class="best"><span class="chip">相性◎</span> <a href="${typePath(t.best)}"><b>${esc(TYPES[t.best].label)}</b></a><p>${esc(t.bestWhy)}</p></div>
-    ${low ? `<div class="best caution"><span class="chip">刺激しあう</span> <a href="${typePath(low.index)}"><b>${esc(TYPES[low.index].label)}</b></a><p>${esc(low.care || low.good)}。おたがいのトリセツを読んでおくと安心。</p></div>` : ''}
+    ${low ? `<div class="best caution"><span class="chip">刺激しあう</span> <a href="${typePath(low.index)}"><b>${esc(TYPES[low.index].label)}</b></a><p>${esc(low.care ? `${low.care}。でも、${low.good}。` : `${low.good}。`)}</p></div>` : ''}
     ${fr.length ? `<h3>友達との相性</h3><ol class="ranking">${fr.map((f) => row(f.result.index, `${esc(f.name)}さん<small class="met">${esc(TYPES[f.result.index].label)}</small>`, f.c.score, `#/pair/${f.code}/${myCode}/${encodeURIComponent(f.name)}/${encodeURIComponent('わたし')}`)).join('')}</ol>` : ''}
     ${ranking.length ? `<details class="more"><summary>全タイプとの相性を見る</summary><ol class="ranking">${ranking.map((x) => row(x.index, esc(TYPES[x.index].label), x.score, typePath(x.index))).join('')}</ol></details>` : ''}
     ${r ? '<button class="btn type" data-invite>友達と相性をくらべる</button>' : ''}
@@ -79,10 +81,10 @@ function detailTeaser(r) {
   const doneHere = done && done.code.startsWith(`${encodeResult(r)}~`);
   const fake = [62, 48, 70, 35, 80, 30, 66, 52, 74, 40];
   return `<section class="card teaser-card">
-    <p class="lead">くわしい診断（無料・あと24問・約3分）</p>
+    <p class="lead">くわしい診断（診断は無料・あと24問・約3分）</p>
     <h2 class="teaser-title"><span class="blurred">？？？な</span>${esc(t.label)}</h2>
-    <p>あなたの<b>二つ名</b>（240通り）と<b>恋愛タイプ</b>（8種類）、<b>10項目のステータス</b>がわかります。</p>
-    <div class="teaser-radar">${radarSVG(fake, { masked: true, size: 240 })}</div>
+    <p><b>二つ名</b>（240通り）・<b>恋愛タイプ</b>（8種類）・<b>10項目のステータスのランク</b>が無料でわかります。数値とくわしい解説は完全版（有料）で読めます。</p>
+    <div class="teaser-radar">${radarSVG(fake, { labels: [...AXES.map((a, k) => (r.sums[k] >= 0 ? a.pos : a.neg)), ...PARAMS.map((p) => p.name.replace(/度$|力$|熱量$/, ''))], masked: true, size: 240 })}</div>
     <ul class="includes small">${PARAMS.map((p) => `<li>${esc(p.name)}</li>`).join('')}</ul>
     ${doneHere
       ? `<a class="btn type" href="#/r/${esc(done.code)}/${esc(done.shareId)}">くわしい診断の結果を見る</a>`
@@ -93,9 +95,12 @@ function detailTeaser(r) {
 
 // ---------- かんたん診断の結果 ----------
 export async function viewResult(r, shareId) {
+  const gen = navNow();
   const t = TYPES[r.index];
   const title = titleOf(r.purity);
   const stats = await loadStats();
+  // 読みこみを待っているあいだに別の画面へ移っていたら、描かない
+  if (gen !== navNow()) return;
   const rarity = rarityOf(r.index, stats);
   const ura = TYPES[r.ura.index];
   const text = shareText(r);
@@ -104,7 +109,7 @@ export async function viewResult(r, shareId) {
   render(`
     ${brand()}
     <section class="result">
-      ${isHidden(r.index) ? `<div class="secret">隠しタイプを引き当てた！（出現率 理論値 ${(priorDistribution()[r.index] * 100).toFixed(1)}%）</div>` : ''}
+      ${isHidden(r.index) ? `<div class="secret">隠しタイプを引き当てた！（計算上の出現率 約${(priorDistribution()[r.index] * 100).toFixed(1)}%）</div>` : ''}
       <p class="lead">あなたは…</p>
       <span class="no">${noLabel(r.index)}</span>
       <div class="chara-wrap">${charaSVG(r.index, { size: 240 })}</div>
@@ -116,7 +121,7 @@ export async function viewResult(r, shareId) {
     </section>
     ${invitePairBox(r)}
     <section class="share">
-      <button class="btn type" data-card="story">画像を保存してストーリーズへ</button>
+      <button class="btn type" data-card="story">画像を保存してストーリーに投稿</button>
       ${shareLinks({ text, url, channelPrefix: '' }).html}
       ${inAppHint()}
       <div class="btn-row">
@@ -126,7 +131,7 @@ export async function viewResult(r, shareId) {
     </section>
     <div class="tiles">
       <div class="tile"><b>ポンコツ純度</b><strong>${r.purity}%</strong><small>${esc(title)}</small></div>
-      <div class="tile"><b>レア度</b><strong>${rarity.pct.toFixed(1)}%</strong><small>${rarity.source === 'actual' ? '診断した人の中で' : '理論値'}</small></div>
+      <div class="tile"><b>レア度</b><strong>${rarity.pct.toFixed(1)}%</strong><small>${rarity.source === 'actual' ? '診断した人の中で' : '計算上の値'}</small></div>
       <a class="tile" href="${typePath(r.ura.index)}"><b>裏タイプ</b><strong class="small">${esc(ura.label)}</strong><small>もうひとつの顔</small></a>
     </div>
     ${detailTeaser(r)}
@@ -141,7 +146,7 @@ export async function viewResult(r, shareId) {
     <section class="card"><h2>友達と遊ぶ</h2>
       <div class="btn-col">
         <button class="btn sub" data-quiz-create>わたしクイズを出す（友達が答えを当てる）</button>
-        <button class="btn sub" data-group>グループ診断をつくる（クラス・部活・推し仲間）</button>
+        <button class="btn sub" data-group>グループ診断をつくる（仲良しグループ・部活・推し仲間）</button>
         ${boardCount ? `<a class="btn sub" href="#/qboard">わたしクイズの成績表（${boardCount}人）</a>` : ''}
       </div>
     </section>
@@ -151,12 +156,14 @@ export async function viewResult(r, shareId) {
 
   const ctx = { ...r, title, rarity };
   app.querySelectorAll('[data-card]').forEach((b) =>
-    b.addEventListener('click', async () => {
-      toast('画像をつくっています…');
-      const canvas = b.dataset.card === 'label' ? await drawLabelCard(ctx) : await drawStoryCard(ctx);
-      track('share', b.dataset.card === 'label' ? 'label-image' : 'image');
-      await shareImageBlob(await canvasToBlob(canvas), { name: `ponkotsu-${typeNo(r.index)}-${b.dataset.card}.png`, text: `${text}\n${url}`, alt: `${t.label}のシェア画像` });
-    }),
+    b.addEventListener('click', () =>
+      busy(b, async () => {
+        toast('画像をつくっています…');
+        const canvas = b.dataset.card === 'label' ? await drawLabelCard(ctx) : await drawStoryCard(ctx);
+        track('share', b.dataset.card === 'label' ? 'label-image' : 'image');
+        await shareImageBlob(await canvasToBlob(canvas), { name: `ponkotsu-${typeNo(r.index)}-${b.dataset.card}.png`, text: `${text}\n${url}`, alt: `${t.label}のシェア画像` });
+      }),
+    ),
   );
   app.querySelectorAll('[data-invite]').forEach((b) => b.addEventListener('click', () => openInviteModal(r)));
   app.querySelector('[data-quiz-create]').addEventListener('click', () => openQuizCreate(r));
@@ -174,17 +181,20 @@ const NAV = [
   ['sec-compat', '相性'],
 ];
 
+// まだ出会っていない隠しタイプ（図鑑の上に重ねて出す）
+export function showLockedType(index) {
+  openModal(`<div class="locked-chara">${charaSVG(index, { size: 140 })}</div>
+    <h2 class="sheet-title">${noLabel(index)}は、まだ秘密</h2>
+    <p class="hint">診断で引き当てるか、このタイプの友達から相性のおさそいをもらうと図鑑にのります。</p>
+    <button class="btn" data-close data-go="#/q">診断する</button>`);
+}
+
+// タイプの解説ページ。まだ出会っていない隠しタイプなら描かずに false を返す
 export function viewType(index) {
   const t = TYPES[index];
   const mine = store.get('mine', null);
   const unlocked = !isHidden(index) || unlockedHidden().has(index) || document.body.dataset.type === typeNo(index).toLowerCase();
-  if (!unlocked) {
-    openModal(`<div class="locked-chara">${charaSVG(index, { size: 140 })}</div>
-      <h2 class="sheet-title">${noLabel(index)}は、まだ秘密</h2>
-      <p class="hint">診断で引き当てるか、このタイプの友達から相性のおさそいをもらうと図鑑にのります。</p>
-      <button class="btn" data-close data-go="#/q">診断する</button>`);
-    return false;
-  }
+  if (!unlocked) return false;
   render(`
     ${brand()}
     <section class="result">
@@ -227,7 +237,7 @@ export function viewType(index) {
     </section>
     ${compatSection(index, null)}
     <section class="card"><h2>このタイプの人へ</h2>
-      <p>くわしい診断（無料）では、二つ名・恋愛タイプ・10項目のステータスがわかります。完全版では「本当のあなた」や恋愛の攻略法まで読めます。</p>
+      <p>くわしい診断（無料）で、二つ名・恋愛タイプ・ステータスのランクがわかります。数値や「本当のあなた」などのくわしい解説は、完全版（有料）で読めます。</p>
       <button class="btn type" data-go="#/d">くわしい診断をする</button>
     </section>
     <button class="btn sub" data-go="#/zukan">図鑑をみる</button>

@@ -6,10 +6,10 @@ import { SITE } from './config.js';
 import { TYPES, AXES, PARAMS, PARAM_TEXT, LOVE_TYPES, isHidden, typeNo } from './data.js';
 import { titleOf, rarityOf, paramLevel, rankOf, LEVEL_NAMES, fullName } from './logic.js';
 import { charaSVG, shade } from './chara.js';
-import { radarSVG, statValues, STAT_LABELS } from './radar.js';
+import { radarSVG, statValues, statLabels } from './radar.js';
 import { drawStoryCard, drawStatusCard, canvasToBlob } from './card.js';
-import { app, ORIGIN, esc, track, loadStats, render, toast, foot, brand, shareLinks, shareImageBlob, inAppHint, ICONS } from './ui.js';
-import { openPaywall, fetchPremium, fetchSample, hasPremium, previewUnlocked, watchClaim, premiumStatus, maybeShowAfterPurchase } from './premium.js';
+import { app, ORIGIN, esc, track, loadStats, render, toast, foot, brand, shareLinks, shareImageBlob, inAppHint, ICONS, navNow, busy } from './ui.js';
+import { openPaywall, fetchPremium, hasPremium, previewUnlocked, watchClaim, premiumStatus, maybeShowAfterPurchase, restorePurchase, hasGift, openGift, priceOf } from './premium.js';
 import { openInviteModal, openGroupCreate, invitePairBox, openQuizCreate } from './social.js';
 import { openProfileCard } from './profile.js';
 
@@ -52,10 +52,12 @@ function chapter(no, title, body, { free = false, locked = false } = {}) {
 }
 
 function statusChapter(r, prem) {
+  const sampleText = PARAM_TEXT[r.nickname.param][paramLevel(r.params[r.nickname.param])];
   const values = statValues(r);
+  const labels = statLabels(r);
   const t = TYPES[r.index];
   const masked = !prem;
-  const rows = STAT_LABELS.map((label, k) => {
+  const rows = labels.map((label, k) => {
     const isParam = k >= AXES.length;
     const v = values[k];
     const shown = !isParam || !masked;
@@ -65,16 +67,18 @@ function statusChapter(r, prem) {
       <span class="sv ${shown ? '' : 'masked'}" ${shown ? '' : 'data-paywall'}>${shown ? `${v}%` : '??%'}</span></li>`;
   }).join('');
   return `
-    <div class="radar-wrap">${radarSVG(values, { masked, color: shade(t.color, 0.32) })}</div>
+    <div class="radar-wrap">${radarSVG(values, { labels, masked, color: shade(t.color, 0.32) })}</div>
     <ul class="stats">${rows}</ul>
-    <p class="hint">${masked ? 'ランク（S〜D）は無料、パラメータの数値と解説は完全版で読めます。' : 'S〜D は、そのパラメータの高さのランクです。'}</p>
+    <p class="hint">S〜D は高さの目安で、よい・わるいではありません。${masked ? 'ランクは無料、6つのパラメータの数値と解説は完全版で読めます。' : ''}</p>
     <div class="nick-why">
       <h3>二つ名「${esc(r.nickname.text)}」の理由</h3>
       <p class="lead-line">${esc(PARAMS[r.nickname.param].name)}が${esc(LEVEL_NAMES[paramLevel(r.params[r.nickname.param])])}（ランク${rankOf(r.params[r.nickname.param])}）。いちばん振り切れていたのがここでした。</p>
-      <p class="sample" id="sample">${prem?.params ? esc(prem.params[r.nickname.param]) : '<span class="hint">読みこみ中…</span>'}</p>
-      ${prem ? '' : '<p class="hint">↑ 完全版の解説の見本です。ほかの5項目も、同じくらいくわしく読めます。</p>'}
+      ${prem?.params
+        ? `<p class="sample">${esc(prem.params[r.nickname.param])}</p>`
+        : `<p class="sample">${esc(sampleText.sample)}</p>${mosaic(r.index, 7, sampleText.rest)}
+           <p class="hint">↑ 完全版の解説の見本（前半）です。後半と、ほかの5項目の解説も完全版で読めます。</p>`}
     </div>
-    <p class="hint">${esc(t.chara)}の4つの軸（全力・人たらし・ノリ・切りかえ）は、かんたん診断の結果と同じです。</p>`;
+    <p class="hint">上の4つ（${AXES.map((a) => `${a.neg}⇔${a.pos}`).join('・')}）は、かんたん診断と同じ結果です。</p>`;
 }
 
 function paramChapter(r, prem) {
@@ -84,7 +88,11 @@ function paramChapter(r, prem) {
     return `<div class="param-item">
       <div class="pi-head"><b>${esc(p.name)}</b><span class="chip soft">${LEVEL_NAMES[lv]}</span><span class="srank r${rankOf(r.params[k])}">${rankOf(r.params[k])}</span></div>
       <p class="lead-line">${esc(lead)}</p>
-      ${prem?.params ? `<p>${esc(prem.params[k])}</p>` : k === r.nickname.param ? '<p class="hint">（くわしい解説は第1章の見本で読めます）</p>' : mosaic(r.index, 10 + k, PARAM_TEXT[k][lv].len)}
+      ${prem?.params
+        ? `<p>${esc(prem.params[k])}</p>`
+        : k === r.nickname.param
+          ? `<p class="hint">（前半は第1章の見本で読めます）</p>${mosaic(r.index, 10 + k, PARAM_TEXT[k][lv].rest)}`
+          : mosaic(r.index, 10 + k, PARAM_TEXT[k][lv].len)}
     </div>`;
   }).join('');
 }
@@ -107,10 +115,10 @@ function premiumChapters(r, prem) {
   const n = t.premiumLen;
   return [
     chapter(4, '本当のあなた', p ? `<p>${esc(p.deep)}</p>` : `<p class="lead-line">${esc(t.teaser)}</p>${mosaic(r.index, 50, n.deep)}`, { locked: !p }),
-    chapter(5, 'ポンコツを武器にする3つの方法', p ? `<ol class="tips">${p.growth.map((g) => `<li>${esc(g)}</li>`).join('')}</ol>` : mosaic(r.index, 60, 0, n.growth), { locked: !p }),
+    chapter(5, 'ポンコツを武器にする3つの方法', p ? `<ol class="tips growth">${p.growth.map((g) => `<li><b>${esc(g.title)}</b><span>${esc(g.body)}</span></li>`).join('')}</ol>` : mosaic(r.index, 60, 0, n.growth), { locked: !p }),
     chapter(6, '恋愛の落とし穴と攻略法', p ? `<p>${esc(p.loveDeep)}</p>` : mosaic(r.index, 70, n.loveDeep), { locked: !p }),
     chapter(7, '2027年の過ごし方ヒント', p ? `<p>${esc(p.next)}</p>` : mosaic(r.index, 80, n.next), { locked: !p }),
-    chapter(8, 'お守りメッセージ', p ? `<div class="letter"><p>${esc(p.letter)}</p></div>` : mosaic(r.index, 90, n.letter), { locked: !p }),
+    chapter(8, 'ひとことエール', p ? `<div class="letter"><p>${esc(p.letter)}</p></div>` : mosaic(r.index, 90, n.letter), { locked: !p }),
   ].join('');
 }
 
@@ -119,24 +127,35 @@ function lockedLength(r) {
   const n = TYPES[r.index].premiumLen;
   const l = LOVE_TYPES[r.love].len;
   const sum = (a) => a.reduce((x, y) => x + y, 0);
-  const params = PARAMS.reduce((acc, _, k) => (k === r.nickname.param ? acc : acc + PARAM_TEXT[k][paramLevel(r.params[k])].len), 0);
+  const params = PARAMS.reduce((acc, _, k) => {
+    const t = PARAM_TEXT[k][paramLevel(r.params[k])];
+    return acc + (k === r.nickname.param ? t.rest : t.len);
+  }, 0);
   return params + l.detail + sum(l.tips) + l.bestWhy + n.deep + sum(n.growth) + n.loveDeep + n.next + n.letter;
 }
 
 // ---------- ページ ----------
 export async function viewReport(r, shareId) {
+  const gen = navNow();
   const t = TYPES[r.index];
   const title = titleOf(r.purity);
-  const stats = await loadStats();
-  const rarity = rarityOf(r.index, stats);
   const love = LOVE_TYPES[r.love];
   const name = fullName(r);
   const url = `${ORIGIN}/t/${typeNo(r.index).toLowerCase()}/?s=${shareId}`;
-  const text = `私は【${name}】でした。恋愛は「${love.name}」\n#${SITE.hashtag} あなたの二つ名は？`;
-  const unlocked = hasPremium() || previewUnlocked();
-  const prem = unlocked ? await fetchPremium(r) : null;
-  const s = await premiumStatus();
-  const price = s.plans?.[0]?.price ?? SITE.premiumPrice;
+  const text = `【${name}】だった！ 恋愛は「${love.name}」\n#${SITE.hashtag} あなたの二つ名は？`;
+  await restorePurchase();
+  const [stats, fetched, s] = await Promise.all([
+    loadStats(),
+    hasPremium() || previewUnlocked() ? fetchPremium(r) : null,
+    premiumStatus(),
+  ]);
+  // 読みこみを待っているあいだに別の画面へ移っていたら、描かない
+  if (gen !== navNow()) return;
+  const rarity = rarityOf(r.index, stats);
+  // 購入済みなのに読みこめなかったときは、モザイクも購入案内も出さずに「再試行」を出す
+  const failed = !!fetched?.error;
+  const prem = failed ? null : fetched;
+  const price = priceOf(s);
   const locked = prem ? 0 : approx(lockedLength(r)).toLocaleString('ja-JP');
 
   render(`
@@ -161,27 +180,32 @@ export async function viewReport(r, shareId) {
         <button class="btn sub small" data-prof>プロフ帳カード</button>
       </div>
     </section>
-    ${prem ? '' : `<div class="paynote">第1〜3章のふんわり部分と、第1章の見本は無料。くわしい部分（第2〜8章・約${locked}字）は完全版 <b>${price}円</b>（税込・1回だけ・自動更新なし）で読めます。</div>`}
+    ${failed
+      ? `<div class="paynote">完全版の読みこみに失敗しました（購入情報はこの端末に残っています）。<button class="btn sub small" data-reload>もう一度読みこむ</button></div>`
+      : prem ? '' : `<div class="paynote">無料で読めるのは、第1章（ランク・二つ名の理由と見本）と、各章の見出し・冒頭の一言です。パラメータの数値と、第2〜8章の本文（約${locked}字）は、完全版 <b>${price}円</b>（税込・買い切り）で読めます。</div>`}
     <nav class="secnav" aria-label="もくじ">${[1, 2, 3, 4, 5, 6, 7, 8].map((n) => `<button data-scroll="ch${n}">第${n}章</button>`).join('')}</nav>
     ${chapter(1, 'あなたのステータス', statusChapter(r, prem), { free: true })}
-    ${prem ? '' : `<div class="cta-inline"><p>第2〜8章とステータスの数値は完全版で</p><button class="btn gold small" data-paywall>完全版を見る（${price}円）</button></div>`}
+    ${prem || failed ? '' : `<div class="cta-inline"><p>第2〜8章とステータスの数値は完全版で</p><button class="btn gold small" data-paywall>完全版を見る（${price}円）</button></div>`}
     ${chapter(2, 'パラメータ解説', paramChapter(r, prem), { locked: !prem })}
     ${chapter(3, `恋愛タイプ「${love.name}」`, loveChapter(r, prem), { locked: !prem })}
     ${premiumChapters(r, prem)}
-    ${prem ? '' : `<p class="hint center">※モザイクはイメージです。購入すると、モザイクの部分に、表示している文字数どおりの文章が出ます。</p>`}
+    ${prem ? '' : `<p class="hint center">※モザイクはイメージです。購入すると、モザイクの部分の文章が読めるようになります（「約○字」はおおよその文字数です）。</p>`}
     <section class="card"><h2>もっと遊ぶ</h2>
       <div class="btn-col">
         <a class="btn sub" href="${typePath(r.index)}">${esc(t.label)}の解説（性格・恋愛・友達・学校・トリセツ）</a>
         <button class="btn sub" data-invite>友達と相性をくらべる</button>
         <button class="btn sub" data-quiz-create>わたしクイズを出す</button>
         <button class="btn sub" data-group>グループ診断をつくる</button>
+        ${prem && hasGift() ? '<button class="btn sub" data-gift>友達へのプレゼントのリンク</button>' : ''}
       </div>
     </section>
     <button class="btn sub" data-go="#/zukan">図鑑をみる</button>
     ${foot()}
-    ${prem ? '' : `<div class="paybar" role="region" aria-label="完全版"><span>のこり<b>7章・約${locked}字</b>がモザイク中</span><button class="btn gold small" data-paywall>${price}円で全部読む</button></div>`}`, r.index);
+    ${prem || failed ? '' : `<div class="paybar" role="region" aria-label="完全版"><span>のこり<b>7章・約${locked}字</b>がモザイク中</span><button class="btn gold small" data-paywall>${price}円で全部読む</button></div>`}`, r.index);
 
-  document.body.classList.toggle('has-paybar', !prem);
+  document.body.classList.toggle('has-paybar', !prem && !failed);
+  app.querySelector('[data-reload]')?.addEventListener('click', () => viewReport(r, shareId));
+  app.querySelector('[data-gift]')?.addEventListener('click', openGift);
   app.querySelectorAll('[data-scroll]').forEach((b) =>
     b.addEventListener('click', () => app.querySelector(`#${b.dataset.scroll}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })),
   );
@@ -201,25 +225,23 @@ export async function viewReport(r, shareId) {
   app.querySelector('[data-group]').addEventListener('click', openGroupCreate);
   app.querySelector('[data-prof]').addEventListener('click', () => openProfileCard(r));
   app.querySelectorAll('[data-card]').forEach((b) =>
-    b.addEventListener('click', async () => {
+    b.addEventListener('click', () => {
       if (b.dataset.card === 'status' && !prem) {
         openPaywall(r);
         return;
       }
-      toast('画像をつくっています…');
-      const canvas = b.dataset.card === 'status'
-        ? await drawStatusCard({ ...r, title, rarity, gold: true })
-        : await drawStoryCard({ ...r, title, rarity, nickname: r.nickname.text, loveName: love.name, gold: !!prem });
-      track('share', b.dataset.card === 'status' ? 'status-image' : 'nick-image');
-      await shareImageBlob(await canvasToBlob(canvas), { name: `ponkotsu-${typeNo(r.index)}-${b.dataset.card}.png`, text: `${text}\n${url}`, alt: `${name}のシェア画像` });
+      busy(b, async () => {
+        toast('画像をつくっています…');
+        const canvas = b.dataset.card === 'status'
+          ? await drawStatusCard({ ...r, title, rarity, gold: true })
+          : await drawStoryCard({ ...r, title, rarity, nickname: r.nickname.text, loveName: love.name, gold: !!prem });
+        track('share', b.dataset.card === 'status' ? 'status-image' : 'nick-image');
+        await shareImageBlob(await canvasToBlob(canvas), { name: `ponkotsu-${typeNo(r.index)}-${b.dataset.card}.png`, text: `${text}\n${url}`, alt: `${name}のシェア画像` });
+      });
     }),
   );
 
-  // 第1章の見本（二つ名のもとになったパラメータの解説）
-  if (!prem) {
-    const sample = await fetchSample(r);
-    const el = app.querySelector('#sample');
-    if (el) el.textContent = sample?.detail || 'ネットワークにつながると、ここに見本が表示されます。';
+  if (!prem && !failed) {
     // 第1章を読み終えたあたりで、一度だけ購入の案内を出す（自動で出すのは1回まで）
     const ch2 = app.querySelector('#ch2');
     if (ch2 && 'IntersectionObserver' in window) {
@@ -231,7 +253,7 @@ export async function viewReport(r, shareId) {
       }, { rootMargin: '0px 0px -40% 0px' });
       io.observe(ch2);
     }
-    watchClaim(() => viewReport(r, shareId));
+    watchClaim(() => window.dispatchEvent(new HashChangeEvent('hashchange')));
   }
   maybeShowAfterPurchase();
 }

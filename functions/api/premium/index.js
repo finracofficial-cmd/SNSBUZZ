@@ -1,9 +1,10 @@
 // GET /api/premium?i=タイプ番号&p=パラメータ6文字 — 購入トークンを持つ人にだけ、完全版の文言を返す。
+// トークンは Authorization ヘッダか Cookie で受け取る。返金済み・終了したコードのトークンは 403。
 // p（くわしい診断の結果。各パラメータ0〜12を36進数1文字）を付けると、
 // その人のパラメータの段階と恋愛タイプに合った文言も返す。
 // 段階としきい値は site/assets/logic.js・data.js と同じ（tests/api.test.mjs で一致を確かめている）。
 import { json } from '../../_lib/http.js';
-import { verifyToken } from '../../_lib/token.js';
+import { accessOf, requestToken } from '../../_lib/token.js';
 import { PREMIUM, PARAM_DETAIL, LOVE_DETAIL } from '../../_lib/premium.js';
 
 const PARAM_MAX = 12;
@@ -12,8 +13,10 @@ const pct = (raw) => Math.round((raw / PARAM_MAX) * 100);
 const level = (p) => (p <= 33 ? 0 : p <= 66 ? 1 : 2);
 
 export async function onRequestGet({ request, env }) {
-  const token = (request.headers.get('authorization') || '').replace(/^Bearer /, '');
-  if (!(await verifyToken(env, token))) return json({ error: 'unauthorized' }, 401);
+  if (!env.PREMIUM_SECRET) return json({ error: 'disabled' }, 503);
+  const access = await accessOf(env, requestToken(request));
+  if (access === 'invalid') return json({ error: 'unauthorized' }, 401);
+  if (access === 'revoked') return json({ error: 'revoked' }, 403);
   const url = new URL(request.url);
   const type = PREMIUM[url.searchParams.get('i')];
   if (!type) return json({ error: 'not_found' }, 404);

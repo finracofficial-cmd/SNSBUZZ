@@ -20,10 +20,17 @@ for (let i = 0; i < count; i++) {
   const t = JSON.parse(fs.readFileSync(fs.existsSync(full) ? full : seed, 'utf8'));
   if (!fs.existsSync(full)) missing.push(no);
   const { premium: p, trigger, ...free } = t;
-  // 有料部分の冒頭だけを「続きは完全版で」の予告として無料側に出す
-  free.teaser = p?.deep ? `${Array.from(p.deep).slice(0, 38).join('')}…` : '';
+  // 有料部分の1文目だけを「続きは完全版で」の予告として無料側に出す（モザイクは2文目から）
+  const firstEnd = p?.deep ? p.deep.indexOf('。') + 1 : 0;
+  free.teaser = p?.deep ? p.deep.slice(0, firstEnd || undefined) : '';
   free.premiumLen = p
-    ? { deep: len(p.deep), growth: (p.growth || []).map(len), loveDeep: len(p.loveDeep), next: len(p.next), letter: len(p.letter) }
+    ? {
+        deep: len(p.deep) - len(free.teaser),
+        growth: (p.growth || []).map((g) => len(g.title) + len(g.body)),
+        loveDeep: len(p.loveDeep),
+        next: len(p.next),
+        letter: len(p.letter),
+      }
     : null;
   types.push(free);
   if (p) premiumTypes[i] = p;
@@ -32,7 +39,20 @@ for (let i = 0; i < count; i++) {
 // くわしい診断：パラメータの段階ごとの文言（lead は無料、detail は有料）
 const PARAM_KEYS = ['koi', 'yaki', 'samishi', 'mousou', 'oshi', 'tsukkomi'];
 const params = JSON.parse(fs.readFileSync(path.resolve('content/params.json'), 'utf8'));
-const paramText = PARAM_KEYS.map((k) => (params[k] || [{}, {}, {}]).map((lv) => ({ lead: lv.lead || '', len: len(lv.detail) })));
+// 第1章の見本：二つ名のもとになったパラメータの解説の「前半」（1文目から、全体の半分まで）だけを無料で見せる。後半は完全版
+const sampleOf = (d) => {
+  const parts = String(d || '').match(/[^。]+。?/g) || [];
+  let out = parts[0] || '';
+  let i = 1;
+  while (i < parts.length - 2 && len(out) + len(parts[i]) <= len(d) * 0.5) out += parts[i++];
+  return out;
+};
+const paramText = PARAM_KEYS.map((k) =>
+  (params[k] || [{}, {}, {}]).map((lv) => {
+    const sample = sampleOf(lv.detail);
+    return { lead: lv.lead || '', sample, len: len(lv.detail), rest: len(lv.detail) - len(sample) };
+  }),
+);
 const paramDetail = PARAM_KEYS.map((k) => (params[k] || [{}, {}, {}]).map((lv) => lv.detail || ''));
 
 // 恋愛タイプ（name・catch・lead・best は無料、detail・tips・bestWhy は有料）

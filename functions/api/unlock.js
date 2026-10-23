@@ -1,30 +1,31 @@
-// GET /api/unlock?sid=Checkoutセッション — 支払い済みなら購入トークンを返す。
-// ふたり用なら、友達にプレゼントする用のトークンも返す。
-// 受け取りID（client_reference_id）付きの購入なら、子どもの端末が受け取れるよう保存する。
+// GET /api/unlock?sid=Checkoutセッション — 決済から戻ってきたブラウザに、購入トークンを渡す。
+// 記録は Webhook（stripe-webhook.js）でも行うので、ここで失敗しても、もう一度呼べば受け取れる。
+// アドレスバーに残った sid から他人が受け取らないよう、受け取れるのは決済から24時間まで。
+// ふたり用のプレゼント券は、ここでは返さない（買った人のトークンで /api/gift から受け取る）。
 import { json, rateLimited } from '../_lib/http.js';
-import { issueToken, premiumEnabled } from '../_lib/token.js';
+import { premiumEnabled, tokenCookie } from '../_lib/token.js';
+import { isOurSession, recordPurchase } from '../_lib/purchase.js';
+
+const WINDOW = 24 * 3600 * 1000;
 
 export async function onRequestGet({ request, env }) {
   if (!premiumEnabled(env)) return json({ error: 'disabled' }, 503);
   if (await rateLimited(env, request, 'unlock', 20)) return json({ error: 'rate' }, 429);
   const sid = new URL(request.url).searchParams.get('sid') || '';
-  if (!/^cs_[\w]{10,200}$/.test(sid)) return json({ error: 'bad_session' }, 400);
+  if (!/^cs_\w{10,200}$/.test(sid)) return json({ error: 'bad_session' }, 400);
   const res = await fetch(`https://api.stripe.com/v1/checkout/sessions/${sid}`, {
     headers: { authorization: `Bearer ${env.STRIPE_SECRET_KEY}` },
   });
+  if (!res.ok) return json({ error: 'stripe' }, res.status === 404 ? 404 : 502);
   const session = await res.json();
-  if (!res.ok || session.payment_status !== 'paid') return json({ error: 'unpaid' }, 402);
-  const id = sid.slice(0, 64);
-  const token = await issueToken(env, id);
-  const giftToken = session.metadata?.plan === 'duo' ? await issueToken(env, `${id.slice(0, 58)}-gift`) : null;
-  const rid = session.client_reference_id;
-  if (env.DB) {
-    const bump = env.DB.prepare('INSERT INTO counters (k, n) VALUES (?1, 1) ON CONFLICT(k) DO UPDATE SET n = n + 1');
-    const stmts = [bump.bind(`premium:paid:${session.metadata?.plan === 'duo' ? 'duo' : 'solo'}`)];
-    if (rid && /^[a-z0-9]{16}$/.test(rid)) {
-      stmts.push(env.DB.prepare('INSERT OR IGNORE INTO claims (rid, token, created_at) VALUES (?1, ?2, ?3)').bind(rid, token, Date.now()));
-    }
-    await env.DB.batch(stmts);
-  }
-  return json({ token, giftToken, forChild: !!rid });
+  if (!isOurSession(session)) return json({ error: 'not_ours' }, 404);
+  if (session.payment_status !== 'paid') return json({ error: 'unpaid' }, 402);
+  if (Date.now() - Number(session.created || 0) * 1000 > WINDOW) return json({ error: 'expired' }, 410);
+  const p = await recordPurchase(env, session);
+  if (p.refunded) return json({ error: 'revoked' }, 403);
+  return json(
+    { token: p.token, plan: p.plan, forChild: !!session.client_reference_id },
+    200,
+    { 'set-cookie': tokenCookie(p.token), 'cache-control': 'no-store' },
+  );
 }

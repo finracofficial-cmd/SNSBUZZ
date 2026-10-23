@@ -71,8 +71,40 @@ export async function api(path, { method = 'GET', body, token, timeout = 4000 } 
   }
 }
 
+// 失敗したときは30秒だけ覚えておき、そのあと呼ばれたら取り直す
 let statsPromise;
-export const loadStats = () => (statsPromise ??= api('stats', { timeout: 1500 }));
+export const loadStats = () =>
+  (statsPromise ??= api('stats', { timeout: 1500 }).then((s) => {
+    if (!s || s.error) setTimeout(() => (statsPromise = null), 30000);
+    return s;
+  }));
+
+// 画面の世代。route() のたびに進めて、読みこみを待っているあいだに別の画面へ移ったら、古い画面は描かない
+let navGen = 0;
+export const navBegin = () => ++navGen;
+export const navNow = () => navGen;
+
+// URLの一部を読む。壊れた %xx が入っていても止まらない
+export const safeDecode = (s) => {
+  try {
+    return decodeURIComponent(s || '');
+  } catch {
+    return '';
+  }
+};
+
+// 画像づくりなど時間のかかるボタン：連打を防ぎ、失敗したら知らせる
+export async function busy(button, fn) {
+  if (button?.disabled) return;
+  if (button) button.disabled = true;
+  try {
+    await fn();
+  } catch {
+    toast('うまくいきませんでした。もう一度ためしてね');
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
 
 export function setTheme(index) {
   const root = document.documentElement.style;
@@ -180,6 +212,10 @@ export const inAppHint = () =>
 
 // 画像を共有シートへ。だめなら長押し保存用に表示する
 export async function shareImageBlob(blob, { name, text, alt }) {
+  if (!blob) {
+    toast('画像を作れませんでした。もう一度ためしてね');
+    return;
+  }
   const file = new File([blob], name, { type: 'image/png' });
   if (navigator.canShare?.({ files: [file] })) {
     try {
@@ -192,7 +228,7 @@ export async function shareImageBlob(blob, { name, text, alt }) {
   const objectUrl = URL.createObjectURL(blob);
   openModal(
     `<img src="${objectUrl}" alt="${esc(alt)}">
-     <p class="hint">画像を長押しして保存 → ストーリーズやTikTokに投稿してね</p>${inAppHint()}
+     <p class="hint">画像を長押しして保存 → ストーリーや動画で投稿してね</p>${inAppHint()}
      <button class="btn sub" data-close>とじる</button>`,
     () => URL.revokeObjectURL(objectUrl),
   );

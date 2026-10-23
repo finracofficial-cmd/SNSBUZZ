@@ -1,4 +1,6 @@
 // POST /api/event {k, v} — 診断開始・完了・シェア・流入を数えるだけ。個人を識別する情報は受け取らない。
+import { rateLimited, crossSite } from '../_lib/http.js';
+
 const SHARE = [
   'x', 'line', 'link', 'native', 'invite', 'quiz',
   'image', 'label-image', 'gold-image', 'pair-image', 'nick-image', 'status-image', 'prof-image',
@@ -17,6 +19,8 @@ const ALLOWED = {
 };
 
 export async function onRequestPost({ request, env }) {
+  if (crossSite(request)) return new Response('origin', { status: 403 });
+  if (await rateLimited(env, request, 'event', 60)) return new Response('rate', { status: 429 });
   let body;
   try {
     body = await request.json();

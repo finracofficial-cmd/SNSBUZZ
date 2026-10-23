@@ -35,7 +35,7 @@ export const QUESTIONS = [
     options: [
       { text: '昼まで寝る。布団から出ないのが正義', v: -3 },
       { text: 'とりあえずスマホを見てたら昼', v: -1, tag: 'phone' },
-      { text: '朝から出かける予定を入れてある', v: 1 },
+      { text: '午前中には起きて、何かしら動く', v: 1 },
       { text: 'やりたいことが多すぎて朝からフル稼働', v: 3 },
     ],
   },
@@ -81,11 +81,11 @@ export const QUESTIONS = [
   },
   {
     axis: 1,
-    text: 'ひとりの時間と、だれかといる時間。',
+    text: 'ひとりの時間と、誰かといる時間、どっちが好き？',
     options: [
       { text: 'ひとりじゃないと充電できない', v: -3 },
       { text: 'ひとりが多めだとちょうどいい', v: -1 },
-      { text: 'だれかといるほうが元気が出る', v: 1 },
+      { text: '誰かといるほうが元気が出る', v: 1 },
       { text: 'ひとりだと逆に疲れる', v: 3 },
     ],
   },
@@ -101,10 +101,10 @@ export const QUESTIONS = [
   },
   {
     axis: 3,
-    text: '嫌なことがあった日のなおし方は？',
+    text: '嫌なことがあった日、どうやって切りかえる？',
     options: [
       { text: '原因を一晩じゅう考える', v: -3 },
-      { text: '誰かに聞いてもらう', v: -1 },
+      { text: 'ちょっと引きずるけど、次の日には平気', v: -1 },
       { text: 'おいしいものを食べて忘れる', v: 1, tag: 'food' },
       { text: '寝たらだいたいリセット', v: 3 },
     ],
@@ -121,12 +121,12 @@ export const QUESTIONS = [
   },
   {
     axis: 1,
-    text: '急に「今から遊ばない？」と誘われたら？',
+    text: '休み時間や休憩中、どう過ごす？',
     options: [
-      { text: '心の準備ができてないので断る', v: -3 },
-      { text: '相手によっては行く', v: -1 },
-      { text: 'だいたい行く', v: 1 },
-      { text: '誘われる前に自分から誘ってる', v: 3 },
+      { text: 'ひとりで好きなことをする', v: -3 },
+      { text: '仲のいい1人とだけ話す', v: -1 },
+      { text: '近くの人と話す', v: 1 },
+      { text: '気づけば輪の真ん中にいる', v: 3 },
     ],
   },
   {
@@ -135,8 +135,8 @@ export const QUESTIONS = [
     options: [
       { text: '毎月ちゃんと貯金してる', v: -3 },
       { text: '使う前に一応考える', v: -1 },
-      { text: '気づいたら残高がない', v: 1, tag: 'money' },
-      { text: '「なんとかなる」が口ぐせ', v: 3 },
+      { text: '気づいたらおこづかいが残りわずか', v: 1, tag: 'money' },
+      { text: '「なんとかなる」で、あるだけ使う', v: 3 },
     ],
   },
   {
@@ -157,20 +157,20 @@ export const AXIS_MAX = 9; // 1軸3問 × 最大3点
 // タイプはかんたん診断で決まり、くわしい診断は同じタイプを細かくする「続きの章」にする。
 // 二つ名は、いちばん振り切れたパラメータの high / low から取る。
 export const PARAMS = [
-  { key: 'koi', name: '恋愛積極度', high: '恋に全力な', low: '恋はのんびりな' },
+  { key: 'koi', name: '恋愛積極度', high: '恋に全力な', low: '恋はのんびり派の' },
   { key: 'yaki', name: 'ヤキモチ度', high: 'ヤキモチ焼きの', low: '心が広すぎる' },
   { key: 'samishi', name: 'さみしがり度', high: 'さみしがりの', low: 'ひとりでも平気な' },
-  { key: 'mousou', name: '妄想力', high: '妄想がとまらない', low: '現実しか見ない' },
-  { key: 'oshi', name: '推し活熱量', high: '推しに生かされている', low: '自分が推しの' },
+  { key: 'mousou', name: '妄想力', high: '妄想がとまらない', low: '地に足がついた' },
+  { key: 'oshi', name: '推し活熱量', high: '推しが燃料の', low: '自分推しの' },
   { key: 'tsukkomi', name: 'ツッコミ力', high: 'ツッコミが鋭い', low: '天然ボケの' },
 ];
 export const PARAM_MAX = 12; // 1パラメータ4問 × 最大3点
 
 // 3つの章（8問ずつ）。章を終えるたびに、ちょっとしたごほうび画面を出す
 export const CHAPTERS = [
-  { title: '第1章　恋とヤキモチ', done: '恋愛のクセを読みとりました' },
-  { title: '第2章　さみしさと妄想', done: '心のクセを読みとりました' },
-  { title: '第3章　推しと笑い', done: 'すべてのパラメータがそろいました' },
+  { title: 'パート1　恋とヤキモチ', done: '恋愛のクセを読みとりました' },
+  { title: 'パート2　さみしさと妄想', done: '心のクセを読みとりました' },
+  { title: 'パート3　推しと笑い', done: 'すべてのパラメータがそろいました' },
 ];
 
 export const PARAM_QUESTIONS = [
@@ -254,12 +254,12 @@ export const PARAM_QUESTIONS = [
   {
     param: 1,
     chapter: 0,
-    text: '仲のいい友達が、ほかの子と“おそろい”を持っていた。',
+    text: '仲のいい友達が、ほかの子と「おそろい」を持っていた。',
     options: [
       { text: 'とくに気にしない', v: 0 },
       { text: '「かわいいね」と言う', v: 1 },
       { text: 'ちょっとうらやましい', v: 2 },
-      { text: '「私ともおそろいにしよ」と言う', v: 3 },
+      { text: '「今度おそろいにしよ」と言う', v: 3 },
     ],
   },
   {
@@ -287,7 +287,7 @@ export const PARAM_QUESTIONS = [
   {
     param: 2,
     chapter: 1,
-    text: 'ひとりでご飯を食べるのは？',
+    text: 'ひとりでごはんを食べるのは？',
     options: [
       { text: 'むしろ好き', v: 0 },
       { text: '全然平気', v: 1 },
@@ -342,7 +342,7 @@ export const PARAM_QUESTIONS = [
   {
     param: 3,
     chapter: 1,
-    text: '推しや好きなキャラとの「もしも」のシチュエーション。',
+    text: '推しや好きなキャラとの「もしも」、考える？',
     options: [
       { text: 'とくに考えない', v: 0 },
       { text: 'たまに考える', v: 1 },
@@ -358,7 +358,7 @@ export const PARAM_QUESTIONS = [
       { text: 'とくにいない', v: 0 },
       { text: 'ゆるく好きな人がいる', v: 1 },
       { text: 'はっきり推しがいる', v: 2 },
-      { text: '推しが生きる意味', v: 3 },
+      { text: '推しが毎日の原動力', v: 3 },
     ],
   },
   {
@@ -386,7 +386,7 @@ export const PARAM_QUESTIONS = [
   {
     param: 5,
     chapter: 2,
-    text: 'ドラマや映画の、ご都合主義なシーン。',
+    text: 'ドラマや映画で、さすがに都合がよすぎる展開がきた。',
     options: [
       { text: '素直に感動する', v: 0 },
       { text: '気にせず楽しむ', v: 1 },
@@ -430,7 +430,7 @@ export const PARAM_QUESTIONS = [
   {
     param: 5,
     chapter: 2,
-    text: 'グループトークで、誰かがボケたスタンプを送った。',
+    text: 'グループトークで、誰かがスタンプでボケてきた。',
     options: [
       { text: 'そっとスルー', v: 0 },
       { text: 'スタンプで返す', v: 1 },

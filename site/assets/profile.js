@@ -25,7 +25,7 @@ export function openProfileCard(r) {
     track('share', 'prof-image');
     await shareImageBlob(await canvasToBlob(canvas), {
       name: `ponkotsu-profile-${typeNo(r.index)}.png`,
-      text: `プロフ帳かいた！ わたしは「${TYPES[r.index].label}」 #ポンコツ図鑑`,
+      text: `プロフ帳かいた！「${TYPES[r.index].label}」タイプだった #ポンコツ図鑑`,
       alt: 'プロフ帳カード',
     });
   };

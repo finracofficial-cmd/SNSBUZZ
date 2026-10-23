@@ -36,21 +36,29 @@ export const LISTS = {
   ingredients: [5, 8],
 };
 export const PREMIUM = {
-  deep: [140, 230],
-  loveDeep: [140, 220],
-  next: [120, 200],
-  letter: [55, 110],
+  deep: [280, 380],
+  loveDeep: [260, 360],
+  next: [260, 360],
+  letter: [110, 180],
 };
+// premium.growth は {title, body} を3つ
+export const GROWTH = { title: [8, 24], body: [40, 90] };
+// premium.deep の1文目は、第4章の予告として無料で見せる
+export const TEASER = [20, 60];
 // 商標・実在サービス名・容姿や病気を連想させる言葉・未成年に不向きな話題・性別を決めつける言葉
 export const NG = [
   'MBTI', 'SBTI', 'LINE', 'ライン', 'インスタ', 'Instagram', 'TikTok', 'ティックトック', 'YouTube', 'ユーチューブ', 'ツイッター', 'Twitter',
   'メンヘラ', '病み', 'コミュ障', '陰キャ', '陽キャ', 'ブス', 'デブ', 'バカ', 'アホ', '頭が悪', '死ぬ', '死に', '消えたい', '鬱', 'うつ病', '発達', 'ADHD', '障害',
   '彼氏', '彼女', 'お酒', '酒', 'ビール', '飲み会', 'タバコ', 'ギャンブル', 'パチンコ',
   // 「占い」に見える言葉（Stripe Japan の禁止業種対策）
-  '占い', '運勢', '運気', '開運', '星座', '守護霊', '前世', '引き寄せ', 'スピリチュアル', '大吉', '吉日', '運命',
+  '占い', '運勢', '運気', '開運', '星座', '守護霊', '前世', '引き寄せ', 'スピリチュアル', '大吉', '吉日', '運命', 'お守り', 'られ運',
+  // 生き死にの比喩・お酒の場面・知らない人との接触・実在の機能名・書き残し
+  '生かされ', '生きる意味', '生き返', '生きるって', '乾杯', 'スクリーンタイム', '〇〇',
 ];
+// 有料の文章で使わない書き出し・言い方（型どおりに見える／時期がずれる）
+export const PREMIUM_NG = ['今年', 'の正体は', '恋の落とし穴は'];
 // 予言のように読める言い回し（2027年の章などは「行動の提案」として書く）
-export const PREDICTION = ['ありそう', '訪れ', '起こりそう', '待っている予感', '巡ってく', 'チャンスが来る'];
+export const PREDICTION = ['ありそう', '訪れ', '起こりそう', '待っている予感', '巡ってく', 'チャンスが来る', 'でしょう', '必ずいる', '必ず来る', 'はずです'];
 
 function check(file) {
   const errors = [];
@@ -78,7 +86,16 @@ function check(file) {
   else {
     Object.entries(PREMIUM).forEach(([k, lim]) => text(`premium.${k}`, t.premium[k], lim));
     if (!Array.isArray(t.premium.growth) || t.premium.growth.length !== 3) errors.push('premium.growth: 3個の配列が必要');
-    else t.premium.growth.forEach((v, i) => text(`premium.growth[${i}]`, v, [10, 36]));
+    else {
+      t.premium.growth.forEach((g, i) => {
+        text(`premium.growth[${i}].title`, g?.title, GROWTH.title);
+        text(`premium.growth[${i}].body`, g?.body, GROWTH.body);
+      });
+    }
+    const first = typeof t.premium.deep === 'string' ? t.premium.deep.split('。')[0] : '';
+    if (len(first) < TEASER[0] || len(first) > TEASER[1]) errors.push(`premium.deep の1文目: ${len(first)}字（${TEASER[0]}〜${TEASER[1]}字。無料の予告に使う）`);
+    const premiumText = JSON.stringify(t.premium);
+    PREMIUM_NG.forEach((w) => premiumText.includes(w) && errors.push(`有料の文章に「${w}」`));
   }
   if (!Number.isInteger(t.index) || !Number.isInteger(t.best)) errors.push('index / best は整数');
   const all = JSON.stringify(t);

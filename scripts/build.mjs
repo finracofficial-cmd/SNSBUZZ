@@ -48,7 +48,7 @@ TYPES.forEach((t, i) => {
   const no = typeNo(i).toLowerCase();
   page(`t/${no}`, {
     title: `${t.label}｜${SITE.quizName}`,
-    description: `${t.roast} あなたは何タイプ？`,
+    description: `${t.praise}${t.roast} あなたは何タイプ？`,
     image: `${origin}/og/${no}.png`,
     url: `${origin}/t/${no}/`,
   }, { type: no });
@@ -68,7 +68,7 @@ TYPES.forEach((t, i) => {
   }, { kind: 'quiz' });
   if (i < BASE_COUNT) urls.push(`${origin}/t/${no}/`);
 });
-page('p', { title: `ふたりの相性｜${SITE.quizName}`, description: 'ふたりの相性は何％？ あなたも診断して、友達との相性をくらべよう。', image: `${origin}/og/pair.png`, url: `${origin}/p/`, noindex: true }, { kind: 'pair' });
+page('p', { title: `ふたりの相性｜${SITE.quizName}`, description: 'ふたりの相性は何%？ あなたも診断して、友達との相性をくらべよう。', image: `${origin}/og/pair.png`, url: `${origin}/p/`, noindex: true }, { kind: 'pair' });
 page('g', { title: `グループ診断｜${SITE.quizName}`, description: 'みんなのポンコツタイプと、グループ内の役割が1ページにまとまります。', image: `${origin}/og/group.png`, url: `${origin}/g/`, noindex: true }, { kind: 'group' });
 page('thanks', { title: `ご購入ありがとうございます｜${SITE.quizName}`, description: topDescription, image: `${origin}/og/top.png`, url: `${origin}/thanks/`, noindex: true }, { kind: 'thanks' });
 
@@ -81,8 +81,43 @@ fs.writeFileSync(
 // 隠しタイプのページは検索に出さない（引き当てる楽しみを残す）
 const hiddenPaths = TYPES.map((_, i) => i).filter((i) => i >= BASE_COUNT).map((i) => `Disallow: /t/${typeNo(i).toLowerCase()}/`);
 fs.writeFileSync(path.join(dist, 'robots.txt'), `User-agent: *\n${hiddenPaths.join('\n')}\nDisallow: /i/\nDisallow: /k/\nDisallow: /p/\nDisallow: /g/\nDisallow: /thanks/\nSitemap: ${origin}/sitemap.xml\n`);
+// Cloudflare Pages のヘッダ。
+//   ・JS/CSS はバージョンなしのESモジュールなので、毎回 ETag で新しいか確かめる（デプロイ直後に新旧が混ざらないように）
+//   ・/thanks/ は決済のIDがURLに入るので、ほかのサイトにURLを送らず、キャッシュもしない
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  'font-src https://fonts.gstatic.com',
+  "img-src 'self' data: blob:",
+  "connect-src 'self' data: blob:",
+  "frame-ancestors 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+].join('; ');
 fs.writeFileSync(
   path.join(dist, '_headers'),
-  `/assets/*\n  Cache-Control: public, max-age=3600\n/og/*\n  Cache-Control: public, max-age=86400\n`,
+  [
+    '/*',
+    `  Content-Security-Policy: ${CSP}`,
+    '  X-Content-Type-Options: nosniff',
+    '  Referrer-Policy: strict-origin-when-cross-origin',
+    '/assets/*',
+    '  Cache-Control: no-cache',
+    '/og/*',
+    '  Cache-Control: public, max-age=86400',
+    '/thanks/*',
+    '  Cache-Control: no-store',
+    '  Referrer-Policy: no-referrer',
+    '',
+  ].join('\n'),
 );
+
+// 本番のドメインを入れたのに、特定商取引法の表記が仮のままならビルドを止める（その状態で販売を始めないため）
+const placeholder = Object.values(SITE.seller).some((v) => /^（/.test(v));
+if (!SITE.origin.includes('example.com') && placeholder) {
+  console.error('site/assets/config.js の seller（特定商取引法の表記）が仮のままです。埋めてからビルドしてください。');
+  process.exit(1);
+}
+if (placeholder) console.warn('注意: config.js の seller（特定商取引法の表記）が仮のままです。販売を始める前に埋めてください。');
 console.log(`built ${TYPES.length} type pages + invite/quiz/pair/group/thanks pages into dist/`);
