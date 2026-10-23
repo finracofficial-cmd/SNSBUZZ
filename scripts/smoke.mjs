@@ -259,6 +259,20 @@ const metCount = await fresh.textContent('.complete b');
 check(!metCount.startsWith('0 '), `続きリンクでシールが引き継がれない: ${metCount}`);
 await fresh.context().close();
 
+// LINE のアプリ内ブラウザ：画像保存の案内と、購入情報の保存場所の注意が出る
+{
+  const ctx = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Safari Line/14.0.0',
+  });
+  const line = await ctx.newPage();
+  line.on('pageerror', (e) => errors.push(e.message));
+  await line.goto(`${base}/#/r/${mineQuick.code}/${mineQuick.shareId}`);
+  await line.waitForSelector('.result .label');
+  check(!!(await line.$('.hint.inapp')), 'LINE のブラウザで、ブラウザで開く案内が出ない');
+  await ctx.close();
+}
+
 // ---------- 画面幅ごとの横はみ出し ----------
 const reportHash = await a.evaluate(() => {
   const m = JSON.parse(localStorage.getItem('pz:mineDetail'));
