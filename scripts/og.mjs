@@ -38,6 +38,8 @@ const images = await page.evaluate(async (count) => {
   const out = {};
   for (let i = 0; i < count; i++) out[i] = (await card.drawOgCard(i)).toDataURL('image/png');
   out.top = (await card.drawTopOg()).toDataURL('image/png');
+  out.pair = (await card.drawFeatureOg('pair')).toDataURL('image/png');
+  out.group = (await card.drawFeatureOg('group')).toDataURL('image/png');
   return out;
 }, TYPES.length);
 await browser.close();
@@ -45,7 +47,7 @@ server.close();
 
 fs.mkdirSync(outDir, { recursive: true });
 for (const [key, dataUrl] of Object.entries(images)) {
-  const name = key === 'top' ? 'top' : typeNo(Number(key));
+  const name = /^\d+$/.test(key) ? typeNo(Number(key)).toLowerCase() : key;
   fs.writeFileSync(path.join(outDir, `${name}.png`), Buffer.from(dataUrl.split(',')[1], 'base64'));
 }
 console.log(`wrote ${Object.keys(images).length} images to ${path.relative(process.cwd(), outDir)}/`);

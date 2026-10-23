@@ -1,4 +1,6 @@
 // スマホ幅で一通り操作して、画面のスクリーンショットとJSエラーを確認するスモークテスト。
+//   ホーム → 20問 → 結果 → シェア画像（結果・成分表） → 友達をさそう
+//   → 別の端末でおさそいリンクを開く → 診断 → ふたりの相性 → 相性カード → 図鑑 → タイプページ
 // 使い方: npm run build && node scripts/smoke.mjs [スクショの出力先]
 import http from 'node:http';
 import fs from 'node:fs';
@@ -30,52 +32,87 @@ await new Promise((r) => server.listen(0, r));
 const base = `http://localhost:${server.address().port}`;
 
 const browser = await chromium.launch({ executablePath });
-const page = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
 const errors = [];
-page.on('pageerror', (e) => errors.push(e.message));
-page.on('console', (m) => {
-  if (m.type() === 'error' && !m.text().includes('404')) errors.push(m.text());
-});
-const shot = (name, fullPage = true) => page.screenshot({ path: path.join(outDir, `${name}.png`), fullPage });
-
-await page.goto(`${base}/`);
-await page.waitForTimeout(600);
-await shot('1-home', false);
-
-await page.click('text=診断する');
-await page.waitForSelector('.opt');
-await shot('2-question', false);
-for (let i = 0; i < 12; i++) {
-  await page.waitForSelector('.opt:not([disabled])');
-  // 毎回2番目のボタンを押す（並びは質問ごとにシャッフルされている）
-  await page.locator('.opt').nth(1).click();
-  await page.waitForTimeout(250);
+async function phone() {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  page.on('pageerror', (e) => errors.push(e.message));
+  page.on('console', (m) => {
+    if (m.type() === 'error' && !m.text().includes('404')) errors.push(m.text());
+  });
+  return page;
 }
-await page.waitForSelector('.result .label', { timeout: 5000 });
-await page.waitForTimeout(700);
-const label = await page.textContent('.result .label');
-await shot('3-result');
+const shot = (page, name, fullPage = true) => page.screenshot({ path: path.join(outDir, `${name}.png`), fullPage });
 
-await page.click('[data-share="image"]');
-await page.waitForSelector('.modal .sheet img', { timeout: 10000 });
-const src = await page.getAttribute('.modal .sheet img', 'src');
-const png = await page.evaluate(async (u) => {
-  const b = await (await fetch(u)).blob();
-  return Array.from(new Uint8Array(await b.arrayBuffer()));
-}, src);
-fs.writeFileSync(path.join(outDir, '4-story-card.png'), Buffer.from(png));
-await page.click('[data-close]');
+async function answerAll(page, pick) {
+  await page.click('text=診断する（20問・約2分）');
+  for (let i = 0; i < 20; i++) {
+    await page.waitForSelector('.opt:not([disabled])');
+    await page.locator('.opt').nth(pick(i)).click();
+    await page.waitForTimeout(200);
+  }
+  await page.waitForSelector('.result .label', { timeout: 6000 });
+  await page.waitForTimeout(600);
+  return page.textContent('.result .label');
+}
 
-await page.goto(`${base}/#/zukan`);
-await page.waitForTimeout(500);
-await shot('5-zukan');
+async function saveModalImage(page, name) {
+  await page.waitForSelector('.modal .sheet img', { timeout: 10000 });
+  const src = await page.getAttribute('.modal .sheet img', 'src');
+  const png = await page.evaluate(async (u) => Array.from(new Uint8Array(await (await fetch(u)).arrayBuffer())), src);
+  fs.writeFileSync(path.join(outDir, `${name}.png`), Buffer.from(png));
+  await page.click('.modal [data-close]');
+}
 
-await page.goto(`${base}/t/07/?s=abc123`);
-await page.waitForTimeout(500);
-await shot('6-type-landing', false);
-const ogImage = await page.getAttribute('meta[property="og:image"]', 'content');
+// 1人目
+const a = await phone();
+await a.goto(`${base}/`);
+await a.waitForTimeout(600);
+await shot(a, '1-home', false);
+await a.click('text=診断する（20問・約2分）');
+await a.waitForSelector('.opt');
+await shot(a, '2-question', false);
+await a.goto(`${base}/`);
+const labelA = await answerAll(a, (i) => (i * 3) % 4);
+await shot(a, '3-result');
+await a.click('[data-card="story"]');
+await saveModalImage(a, '4-story-card');
+await a.click('[data-card="label"]');
+await saveModalImage(a, '4-label-card');
+
+await a.locator('.share [data-invite]').click();
+await a.fill('#invite-name', 'ゆい');
+await a.click('#invite-make');
+const inviteText = await a.getAttribute('#invite-links [data-copy]', 'data-copy');
+const inviteUrl = new URL(inviteText.split('\n').pop());
+await a.click('.modal [data-close]');
+
+// 2人目：おさそいリンクから
+const b = await phone();
+await b.goto(`${base}${inviteUrl.pathname}${inviteUrl.search}`);
+await b.waitForTimeout(500);
+await shot(b, '5-invite-home', false);
+const labelB = await answerAll(b, (i) => (i * 5 + 1) % 4);
+const pairBox = await b.textContent('.pairbox h2');
+await b.click('.pairbox a');
+await b.waitForSelector('.pair-score');
+await b.waitForTimeout(400);
+await shot(b, '6-pair');
+await b.click('[data-pair-card]');
+await saveModalImage(b, '7-pair-card');
+await b.goto(`${base}/#/zukan`);
+await b.waitForTimeout(400);
+await shot(b, '8-zukan');
+
+await b.goto(`${base}/t/07/?s=abc123`);
+await b.waitForTimeout(500);
+await shot(b, '9-type-landing');
+const ogImage = await b.getAttribute('meta[property="og:image"]', 'content');
+await b.goto(`${base}/t/s4/`);
+await b.waitForTimeout(400);
+const hiddenLabel = await b.textContent('.result .label');
 
 await browser.close();
 server.close();
-console.log(JSON.stringify({ label, ogImage, errors }, null, 2));
+console.log(JSON.stringify({ labelA, labelB, pairBox, ogImage, hiddenLabel, errors }, null, 2));
 if (errors.length) process.exit(1);

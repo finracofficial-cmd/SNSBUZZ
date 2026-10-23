@@ -1,137 +1,74 @@
+// 入口：ホーム・質問・ルーティング。結果やペア・グループの画面は別モジュール。
 import { SITE } from './config.js';
-import { AXES, TYPES, QUESTIONS, HIDDEN_INDEX, typeNo } from './data.js';
-import { judge, titleOf, purityOf, rarityOf, priorDistribution } from './logic.js';
-import { charaSVG, shade, tint } from './chara.js';
-import { drawStoryCard, canvasToBlob } from './card.js';
-
-const app = document.getElementById('app');
-const modal = document.getElementById('modal');
-const toastEl = document.getElementById('toast');
-
-// 本番ドメインが未設定のあいだは、いま開いているサイトのURLでシェアする
-const ORIGIN = SITE.origin.includes('example.com') ? location.origin : SITE.origin;
-
-const esc = (s) =>
-  String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-
-// ---------- 保存・計測（どちらも失敗しても画面は動く） ----------
-const store = {
-  get(key, fallback) {
-    try {
-      const v = localStorage.getItem(`pz:${key}`);
-      return v ? JSON.parse(v) : fallback;
-    } catch {
-      return fallback;
-    }
-  },
-  set(key, value) {
-    try {
-      localStorage.setItem(`pz:${key}`, JSON.stringify(value));
-    } catch {
-      // プライベートモードなど
-    }
-  },
-};
-
-function track(k, v = '') {
-  try {
-    const body = new Blob([JSON.stringify({ k, v: String(v) })], { type: 'application/json' });
-    navigator.sendBeacon?.('/api/event', body);
-  } catch {
-    // 計測はベストエフォート
-  }
-}
-
-let statsPromise;
-function loadStats() {
-  statsPromise ??= (async () => {
-    try {
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 1500);
-      const res = await fetch('/api/stats', { signal: ctrl.signal });
-      clearTimeout(timer);
-      if (!res.ok) return null;
-      return await res.json();
-    } catch {
-      return null;
-    }
-  })();
-  return statsPromise;
-}
-
-// ---------- 共通パーツ ----------
-function setTheme(index) {
-  const root = document.documentElement.style;
-  if (index == null) {
-    ['--type', '--type-deep', '--type-soft'].forEach((k) => root.removeProperty(k));
-    return;
-  }
-  const c = TYPES[index].color;
-  root.setProperty('--type', c);
-  root.setProperty('--type-deep', shade(c, 0.32));
-  root.setProperty('--type-soft', tint(c, 0.75));
-}
-
-function toast(msg) {
-  toastEl.textContent = msg;
-  toastEl.hidden = false;
-  clearTimeout(toast.t);
-  toast.t = setTimeout(() => (toastEl.hidden = true), 2200);
-}
-
-const foot = () => `
-  <p class="foot">${esc(SITE.disclaimer)}<br>
-    <a href="#/">トップ</a><a href="#/zukan">図鑑</a><a href="#/about">このサイトについて</a>
-  </p>`;
-
-const brand = () => `<div class="brand"><a href="#/">${esc(SITE.name)}</a><a href="#/zukan">図鑑をみる →</a></div>`;
-
-function render(html, index = null) {
-  setTheme(index);
-  app.innerHTML = `<div class="view">${html}</div>`;
-  window.scrollTo(0, 0);
-}
+import { TYPES, QUESTIONS, HIDDEN, indexFromNo, isHidden } from './data.js';
+import { judge, encodeResult, decodeResult } from './logic.js';
+import { charaSVG } from './chara.js';
+import { app, esc, store, track, loadStats, render, toast, foot, brand, handleShareClick, closeModal } from './ui.js';
+import { viewResult, viewType, viewZukan } from './result.js';
+import { receiveInvite, inviteBanner, viewPair, viewGroup, openGroupCreate, addFriend } from './social.js';
+import { completePurchase } from './premium.js';
 
 // ---------- ホーム ----------
 function viewHome() {
   const parade = [3, 6, 8, 12, 10, 14, 7, 1].map((i) => charaSVG(i, { size: 100 })).join('');
+  const mine = store.get('mine', null);
+  const pendingGroup = store.get('pendingGroup', null);
   render(`
+    ${inviteBanner()}
+    ${pendingGroup ? '<div class="invite"><div>グループ診断に参加するには、まず診断してね</div></div>' : ''}
     <section class="hero">
       <h1><small>${esc(SITE.name)}</small>${esc(SITE.quizName)}</h1>
       <p class="catch">${esc(SITE.catchCopy)}</p>
       <div class="parade" aria-hidden="true">${parade}</div>
-      <button class="btn" data-go="#/q">診断する（12問・1分）</button>
-      <div class="meta-row"><span class="pill">16タイプ</span><span class="pill">隠しタイプあり</span><span class="pill">登録なし・無料</span></div>
+      <button class="btn" data-go="#/q">診断する（20問・約2分）</button>
+      <div class="meta-row"><span class="pill">16タイプ＋隠し${HIDDEN.length}タイプ</span><span class="pill">相性診断つき</span><span class="pill">登録なし・無料</span></div>
     </section>
+    ${mine && TYPES[mine.index] && mine.code ? `<a class="card mini-result" href="#/r/${esc(mine.code)}/${esc(mine.shareId)}">
+      ${charaSVG(mine.index, { size: 64 })}<div><small>前回のあなた</small><b>${esc(TYPES[mine.index].label)}</b></div><span>結果を見る →</span></a>` : ''}
+    <section class="card features">
+      <h2>できること</h2>
+      <ul>
+        <li><b>16タイプ＋隠し${HIDDEN.length}タイプ</b>　性格・恋愛・友達・学校・トリセツまでまるごと解説</li>
+        <li><b>成分表とポンコツ純度</b>　同じタイプでも、人によって数字がちがう</li>
+        <li><b>ふたりの相性</b>　リンクを送って、友達や好きな人と相性チェック</li>
+        <li><b>グループ診断</b>　クラスや部活の役割分担（幹事役・癒し担当…）がわかる</li>
+      </ul>
+    </section>
+    <section class="card secret-teaser"><h2>隠しタイプは${HIDDEN.length}種類</h2>
+      <div class="silhouettes">${HIDDEN.map((h) => charaSVG(h.index, { size: 72 })).join('')}</div>
+      <p class="hint">特定の答え方をした人だけが出会えるレアタイプ。いちばんレアなのは出現率1%以下。</p>
+    </section>
+    <button class="btn sub" data-group-create>グループ診断をつくる</button>
     ${foot()}`);
+  app.querySelector('[data-group-create]').addEventListener('click', openGroupCreate);
 }
 
 // ---------- 質問 ----------
 // 選択肢の並びが「弱い→強い」の順に見えないよう、質問ごとに固定の順でシャッフルする
 const ORDER = QUESTIONS.map((q, i) => {
   const idx = q.options.map((_, j) => j);
-  let seed = (i + 3) * 2654435761;
+  let seed = i * 7919 + 17;
   for (let j = idx.length - 1; j > 0; j--) {
-    seed = (seed * 1103515245 + 12345) % 2147483648;
+    seed = (seed * 48271) % 2147483647;
     const k = seed % (j + 1);
     [idx[j], idx[k]] = [idx[k], idx[j]];
   }
   return idx;
 });
 
+const CHEERS = { 5: 'いい調子！', 10: 'あと半分！', 15: 'あと5問！', 19: 'ラスト1問！' };
 let answers = [];
 
 function viewQuestion() {
   const i = answers.length;
   const q = QUESTIONS[i];
-  const opts = ORDER[i]
-    .map((j) => `<button class="opt" data-choice="${j}">${esc(q.options[j].text)}</button>`)
-    .join('');
+  const opts = ORDER[i].map((j) => `<button class="opt" data-choice="${j}">${esc(q.options[j].text)}</button>`).join('');
   render(`
     <div class="progress" aria-hidden="true"><i style="width:${(i / QUESTIONS.length) * 100}%"></i></div>
     <div class="qhead"><span>Q${i + 1} / ${QUESTIONS.length}</span>${i > 0 ? '<button data-back>← もどる</button>' : '<a href="#/">やめる</a>'}</div>
     <h2 class="qtext">${esc(q.text)}</h2>
     <div class="opts">${opts}</div>`);
+  if (CHEERS[i]) toast(CHEERS[i]);
 }
 
 function choose(choice, button) {
@@ -139,266 +76,116 @@ function choose(choice, button) {
   app.querySelectorAll('.opt').forEach((b) => (b.disabled = true));
   setTimeout(() => {
     answers.push(choice);
-    if (answers.length < QUESTIONS.length) {
-      viewQuestion();
-    } else {
-      finish();
-    }
-  }, 170);
+    if (answers.length < QUESTIONS.length) viewQuestion();
+    else finish();
+  }, 160);
 }
 
 function finish() {
   const r = judge(answers);
   answers = [];
+  const code = encodeResult(r);
   const shareId = Math.random().toString(36).slice(2, 8);
   track('done', r.index);
-  store.set('mine', { index: r.index, sums: r.sums, shareId });
-  if (r.hidden) store.set('hidden', true);
-  render(`<div class="loading">鑑定中…<div class="dots"><i></i><i></i><i></i></div></div>`);
+  store.set('mine', { index: r.index, code, shareId });
+  if (isHidden(r.index)) store.set('gotHidden', [...new Set([...store.get('gotHidden', []), r.index])]);
   loadStats();
+  // 成分を分析しているふうの演出（4本のバーが伸びる）
+  render(`<div class="loading">ポンコツ成分を分析中…
+    <div class="analyzing">${r.axisPct.map((p, k) => `<div><i style="--w:${p}%;animation-delay:${k * 0.18}s"></i></div>`).join('')}</div></div>`);
+  const pendingGroup = store.get('pendingGroup', null);
   setTimeout(() => {
-    location.hash = `#/r/${r.index}/${r.sums.join(',')}/${shareId}`;
-  }, 1300);
-}
-
-// ---------- 結果 ----------
-const ICONS = {
-  x: '<svg viewBox="0 0 24 24"><path fill="currentColor" d="M17.8 3h3.1l-6.8 7.8L22 21h-6.3l-4.9-6.4L5.2 21H2.1l7.3-8.3L2 3h6.4l4.4 5.9L17.8 3Zm-1.1 16.2h1.7L7.4 4.7H5.6l11.1 14.5Z"/></svg>',
-  line: '<svg viewBox="0 0 24 24"><path fill="#06C755" d="M12 3C6.5 3 2 6.6 2 11c0 3.9 3.5 7.2 8.3 7.9.3.1.8.2.9.5.1.3.1.7 0 1l-.1.9c0 .3-.2 1 .9.6 1.1-.5 6-3.6 8.2-6.1C21.6 14.1 22 12.6 22 11c0-4.4-4.5-8-10-8Z"/></svg>',
-  link: '<svg viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>',
-  more: '<svg viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M12 3v12M7 8l5-5 5 5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>',
-};
-
-function shareUrl(index, shareId) {
-  return `${ORIGIN}/t/${typeNo(index)}/?s=${shareId}`;
-}
-
-function shareText(index, purity) {
-  const t = TYPES[index];
-  return `私は【${t.label}（${titleOf(purity)}）】でした。ポンコツ純度${purity}%\n${t.roast}\n#${SITE.hashtag} あなたは何タイプ？`;
-}
-
-// 軸ごとの勝ち側はタイプ番号のビットから取る（合計0で引き分けた軸もタイプと表示がずれないように）
-function axisBars(index, sums, pct) {
-  return AXES.map((a, k) => {
-    const pos = index === HIDDEN_INDEX ? sums[k] > 0 : ((index >> (3 - k)) & 1) === 1;
-    const negPct = pos ? 100 - pct[k] : pct[k];
-    return `<div class="axis">
-      <div class="names"><span class="${pos ? '' : 'win'}">${esc(a.neg)} ${negPct}%</span><span class="${pos ? 'win' : ''}">${100 - negPct}% ${esc(a.pos)}</span></div>
-      <div class="bar"><i style="${pos ? 'right' : 'left'}:0;width:${pos ? 100 - negPct : negPct}%"></i></div>
-    </div>`;
-  }).join('');
-}
-
-function typeBody(index) {
-  const t = TYPES[index];
-  const best = TYPES[t.best];
-  return `
-    <div class="card"><h2>あるある</h2><ul class="aru">${t.aru.map((a) => `<li>${esc(a)}</li>`).join('')}</ul></div>
-    <div class="card"><h2>図鑑データ</h2><dl class="facts">
-      <dt>キャラ</dt><dd>${esc(t.chara)}</dd>
-      <dt>生息地</dt><dd>${esc(t.habitat)}</dd>
-      <dt>口ぐせ</dt><dd>「${esc(t.kuchiguse)}」</dd>
-    </dl></div>
-    <div class="card"><h2>相性◎　${esc(best.label)}</h2>
-      <p style="margin:0">${esc(t.bestWhy)}</p>
-      <p style="margin:8px 0 0"><a href="#/t/${typeNo(t.best)}">${esc(best.chara)}を見る →</a></p>
-    </div>`;
-}
-
-async function viewResult(index, sums, shareId) {
-  const t = TYPES[index];
-  const purity = purityOf(sums);
-  const title = titleOf(purity);
-  const pct = sums.map((s) => Math.round(50 + (Math.abs(s) / 6) * 50));
-  const stats = await loadStats();
-  const rarity = rarityOf(index, stats);
-  render(`
-    ${brand()}
-    <section class="result">
-      ${index === HIDDEN_INDEX ? `<div class="secret">隠しタイプを引き当てた！（出現率 理論値 ${(priorDistribution()[HIDDEN_INDEX] * 100).toFixed(1)}%）</div>` : ''}
-      <p class="lead">あなたは…</p>
-      <span class="no">${index === HIDDEN_INDEX ? '隠しタイプ' : `No.${typeNo(index)}`}</span>
-      <div class="chara-wrap">${charaSVG(index, { size: 240 })}</div>
-      <h1 class="label">${esc(t.label)}</h1>
-      <span class="chip">${esc(title)}・ポンコツ純度${purity}%</span>
-      <p class="praise">${esc(t.praise)}</p>
-      <p class="roast"><span>${esc(t.roast)}</span></p>
-
-      <div class="share">
-        <button class="btn type" data-share="image">画像を保存してストーリーズへ</button>
-        <div class="share-row">
-          <button data-share="x">${ICONS.x}ポスト</button>
-          <button data-share="line">${ICONS.line}LINE</button>
-          <button data-share="link">${ICONS.link}コピー</button>
-          <button data-share="native">${ICONS.more}送る</button>
-        </div>
-      </div>
-
-      <div class="tiles">
-        <div class="tile"><b>ポンコツ純度</b><strong>${purity}%</strong><small>${esc(title)}</small></div>
-        <div class="tile"><b>レア度</b><strong>${rarity.pct.toFixed(1)}%</strong><small>${rarity.source === 'actual' ? '診断した人の中で' : '理論値'}</small></div>
-        <a class="tile" href="#/t/${typeNo(t.best)}"><b>相性◎</b><strong class="small">${esc(TYPES[t.best].label)}</strong><small>${esc(TYPES[t.best].chara)}</small></a>
-      </div>
-    </section>
-    <div class="card"><h2>4つの軸</h2>${axisBars(index, sums, pct)}</div>
-    ${typeBody(index)}
-    <div class="card"><h2>あそびかた</h2>
-      <p style="margin:0">友達や推しを当てはめるなら何タイプ？ 図鑑から選んで「#${esc(SITE.hashtag)}」で送りつけよう。</p>
-    </div>
-    <button class="btn" data-go="#/q">もう一回診断する</button>
-    <button class="btn sub" data-go="#/zukan">図鑑をみる（全${HIDDEN_INDEX}タイプ＋隠し）</button>
-    ${foot()}`, index);
-
-  app.querySelectorAll('[data-share]').forEach((b) =>
-    b.addEventListener('click', () => share(b.dataset.share, { index, purity, title, rarity, shareId })),
-  );
-}
-
-async function share(channel, ctx) {
-  const url = shareUrl(ctx.index, ctx.shareId);
-  const text = shareText(ctx.index, ctx.purity);
-  track('share', channel);
-  if (channel === 'x') {
-    window.open(`https://x.com/intent/post?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`, '_blank', 'noopener');
-  } else if (channel === 'line') {
-    window.open(`https://line.me/R/share?text=${encodeURIComponent(`${text}\n${url}`)}`, '_blank', 'noopener');
-  } else if (channel === 'link') {
-    try {
-      await navigator.clipboard.writeText(`${text}\n${url}`);
-      toast('コピーしました');
-    } catch {
-      prompt('コピーしてね', url);
-    }
-  } else if (channel === 'native') {
-    if (navigator.share) {
-      navigator.share({ text, url }).catch(() => {});
+    if (pendingGroup) {
+      store.set('pendingGroup', null);
+      location.hash = `#/g/${pendingGroup.id}`;
     } else {
-      share('link', ctx);
+      location.hash = `#/r/${code}/${shareId}`;
     }
-  } else if (channel === 'image') {
-    await shareImage(ctx, text, url);
-  }
+  }, 1500);
 }
 
-async function shareImage(ctx, text, url) {
-  toast('画像をつくっています…');
-  const canvas = await drawStoryCard(ctx);
-  const blob = await canvasToBlob(canvas);
-  const file = new File([blob], `ponkotsu-${typeNo(ctx.index)}.png`, { type: 'image/png' });
-  if (navigator.canShare?.({ files: [file] })) {
-    try {
-      await navigator.share({ files: [file], text: `${text}\n${url}` });
-      return;
-    } catch (e) {
-      if (e.name === 'AbortError') return;
-    }
-  }
-  const objectUrl = URL.createObjectURL(blob);
-  modal.innerHTML = `<div class="sheet">
-      <img src="${objectUrl}" alt="${esc(TYPES[ctx.index].label)}のシェア画像">
-      <p class="hint">スマホは画像を長押しして保存 → ストーリーズやTikTokに投稿してね</p>
-      <a class="btn" href="${objectUrl}" download="${file.name}">画像をダウンロード</a>
-      <button class="btn sub" data-close>とじる</button>
-    </div>`;
-  modal.hidden = false;
-  modal.onclick = (e) => {
-    if (e.target === modal || e.target.closest('[data-close]')) {
-      modal.hidden = true;
-      URL.revokeObjectURL(objectUrl);
-    }
-  };
-}
-
-// ---------- タイプ詳細（シェアURLの着地点） ----------
-function viewType(index) {
-  const t = TYPES[index];
-  const mine = store.get('mine', null);
-  // 隠しタイプは自分で引き当てるか、シェアされた /t/00/ から来たときだけ見せる
-  const locked = index === HIDDEN_INDEX && !store.get('hidden', false) && document.body.dataset.type !== '00';
-  if (locked) {
-    viewZukan();
-    toast('隠しタイプは診断で引き当てると見られます');
-    return;
-  }
-  render(`
-    ${brand()}
-    <section class="result">
-      <span class="no">${index === HIDDEN_INDEX ? '隠しタイプ' : `No.${typeNo(index)}`}</span>
-      <div class="chara-wrap">${charaSVG(index, { size: 240 })}</div>
-      <h1 class="label">${esc(t.label)}</h1>
-      <p class="praise">${esc(t.praise)}</p>
-      <p class="roast"><span>${esc(t.roast)}</span></p>
-      <button class="btn" data-go="#/q">${mine ? 'もう一回診断する' : 'あなたは何タイプ？診断する'}</button>
-    </section>
-    ${typeBody(index)}
-    <button class="btn sub" data-go="#/zukan">図鑑をみる</button>
-    ${foot()}`, index);
-}
-
-// ---------- 図鑑 ----------
-function viewZukan() {
-  const mine = store.get('mine', null);
-  const gotHidden = store.get('hidden', false);
-  const cards = TYPES.map((t, i) => {
-    const locked = i === HIDDEN_INDEX && !gotHidden;
-    const isMine = mine && mine.index === i;
-    return `<a class="zcard ${isMine ? 'mine' : ''} ${locked ? 'locked' : ''}" href="${locked ? '#/zukan' : `#/t/${typeNo(i)}`}">
-      ${isMine ? '<span class="me">あなた</span>' : ''}
-      ${charaSVG(i, { size: 150 })}
-      <div class="n">${i === HIDDEN_INDEX ? '隠しタイプ' : `No.${typeNo(i)}`}</div>
-      <div class="l">${locked ? '？？？' : esc(t.label)}</div>
-    </a>`;
-  }).join('');
-  render(`
-    ${brand()}
-    <section class="zukan">
-      <h1>ポンコツ図鑑</h1>
-      <p class="hint" style="margin:0">全${HIDDEN_INDEX}タイプ＋隠しタイプ1つ。友達や推しは何タイプ？</p>
-      <div class="grid">${cards}</div>
-    </section>
-    <button class="btn" data-go="#/q" style="margin-top:20px">診断する</button>
-    ${foot()}`);
-}
-
+// ---------- 説明・法定表記 ----------
 function viewAbout() {
   render(`
     ${brand()}
     <div class="card"><h2>このサイトについて</h2>
-      <p>${esc(SITE.quizName)}は、12問の答えから“愛すべきポンコツ”タイプを16種類（＋隠しタイプ）に分けるエンタメ診断です。心理学的な検査ではありません。</p>
-      <p>回答や個人を特定する情報は保存しません。診断結果のタイプとシェアの回数だけを、個人と結びつかない形で集計しています（レア度の表示に使います）。</p>
-      <p>結果画像のスクリーンショット・動画での紹介・配信での利用は自由です。</p>
+      <p>${esc(SITE.quizName)}は、20問の答えから“愛すべきポンコツ”タイプを16種類（＋隠しタイプ${HIDDEN.length}種類）に分けるエンタメ診断です。心理学的な検査ではありません。</p>
+      <p>回答や個人を特定する情報は集めていません。集計しているのは、診断結果のタイプとシェアの回数だけです（レア度の表示に使います）。</p>
+      <p>相性のおさそいリンクには、あなたが入れたニックネームと診断結果だけが入ります。グループ診断では、ニックネームとタイプをグループのページに表示します。グループは作成から90日で見られなくなります。</p>
+      <p>結果画像のスクリーンショット、動画での紹介、配信での利用は自由です。</p>
+    </div>
+    ${foot()}`);
+}
+
+function viewLegal() {
+  const s = SITE.seller;
+  render(`
+    ${brand()}
+    <div class="card"><h2>特定商取引法に基づく表記</h2>
+      <dl class="facts confirm">
+        <dt>販売事業者</dt><dd>${esc(s.name)}</dd>
+        <dt>所在地・電話番号</dt><dd>${esc(s.address)}</dd>
+        <dt>お問い合わせ</dt><dd>${esc(s.contact)}</dd>
+        <dt>販売価格</dt><dd>完全版トリセツ ${SITE.premiumPrice}円（税込）</dd>
+        <dt>商品代金以外の費用</dt><dd>インターネット接続にかかる通信料</dd>
+        <dt>支払方法</dt><dd>クレジットカード、Apple Pay、Google Pay（決済サービス Stripe）</dd>
+        <dt>支払時期</dt><dd>ご注文時に決済されます</dd>
+        <dt>提供時期</dt><dd>決済完了後、すぐにご利用いただけます</dd>
+        <dt>返品・キャンセル</dt><dd>デジタルコンテンツの性質上、購入後の返品・キャンセルはできません</dd>
+        <dt>動作環境</dt><dd>最新版の Safari・Chrome。購入情報はご利用の端末のブラウザに保存されます</dd>
+      </dl>
+      <p class="hint">18歳未満の方は、保護者の同意を得てからご購入ください。</p>
     </div>
     ${foot()}`);
 }
 
 // ---------- ルーティング ----------
-function route() {
-  modal.hidden = true;
+async function route() {
+  closeModal();
+  const page = document.body.dataset.page;
   const hash = location.hash || (document.body.dataset.type ? `#/t/${document.body.dataset.type}` : '#/');
-  const [, view, a, b, c] = hash.split('/');
+  const [, view, a, b, c, d] = hash.split('/');
   if (view === 'q') {
     answers = [];
     track('start');
     viewQuestion();
-  } else if (view === 'r' && TYPES[Number(a)]) {
-    const sums = (b || '').split(',').map(Number);
-    if (sums.length === AXES.length && sums.every(Number.isFinite)) {
-      viewResult(Number(a), sums, c || 'x');
-    } else {
-      viewType(Number(a));
-    }
-  } else if (view === 't') {
-    const index = a === '00' ? HIDDEN_INDEX : Number(a) - 1;
-    if (TYPES[index]) viewType(index);
+  } else if (view === 'r') {
+    const r = decodeResult(a);
+    if (r) viewResult(r, b || 'x');
     else viewHome();
+  } else if (view === 't') {
+    const index = indexFromNo(a);
+    if (index < 0 || !viewType(index)) viewZukan();
   } else if (view === 'zukan') {
     viewZukan();
+  } else if (view === 'pair') {
+    viewPair(a, b, decodeURIComponent(c || ''), decodeURIComponent(d || ''));
+  } else if (view === 'g') {
+    viewGroup(a);
   } else if (view === 'about') {
     viewAbout();
+  } else if (view === 'legal') {
+    viewLegal();
+  } else if (!location.hash && page === 'thanks') {
+    location.replace(await completePurchase(new URLSearchParams(location.search).get('sid') || ''));
   } else {
     viewHome();
   }
+}
+
+function delegate(e) {
+  const shareEl = e.target.closest('[data-ch]');
+  if (shareEl && handleShareClick(shareEl)) {
+    e.preventDefault();
+    return true;
+  }
+  const go = e.target.closest('[data-go]');
+  if (go) {
+    if (location.hash === go.dataset.go) route();
+    else location.hash = go.dataset.go;
+    return true;
+  }
+  return false;
 }
 
 app.addEventListener('click', (e) => {
@@ -412,13 +199,30 @@ app.addEventListener('click', (e) => {
     viewQuestion();
     return;
   }
-  const go = e.target.closest('[data-go]');
-  if (go) {
-    if (location.hash === go.dataset.go) route();
-    else location.hash = go.dataset.go;
-  }
+  delegate(e);
 });
+// モーダルの中のボタン（共有・画面遷移）も同じ扱いにする
+document.getElementById('modal').addEventListener('click', delegate);
+
+// 静的な着地ページ（/i/ /p/ /g/）から来たときの初期化
+(function boot() {
+  const params = new URLSearchParams(location.search);
+  const page = document.body.dataset.page;
+  if (params.has('s')) track('ref', '1');
+  if (page === 'invite' && !location.hash && receiveInvite(params)) {
+    history.replaceState(null, '', `${location.pathname}#/`);
+  }
+  if (page === 'pair' && !location.hash && params.get('a') && params.get('b')) {
+    addFriend(params.get('na') || '友達', params.get('a'));
+    const p = ['a', 'b', 'na', 'nb'].map((k) => encodeURIComponent(params.get(k) || ''));
+    history.replaceState(null, '', `${location.pathname}#/pair/${p.join('/')}`);
+  }
+  if (page === 'group' && !location.hash && /^[a-z0-9]{8}$/.test(params.get('id') || '')) {
+    const id = params.get('id');
+    if (!store.get('mine', null)?.code) store.set('pendingGroup', { id });
+    history.replaceState(null, '', `${location.pathname}#/g/${id}`);
+  }
+})();
 
 window.addEventListener('hashchange', route);
-if (new URLSearchParams(location.search).has('s')) track('ref', '1');
 route();

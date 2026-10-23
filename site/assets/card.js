@@ -1,6 +1,6 @@
-// シェア用の画像をcanvasで描く。ストーリーズ用(9:16)と、タイプ別OGP(1.91:1)の2種類。
+// シェア用の画像をcanvasで描く。ストーリーズ用(9:16)の結果・成分表・相性カードと、OGP(1.91:1)。
 import { SITE } from './config.js';
-import { TYPES, HIDDEN_INDEX, typeNo } from './data.js';
+import { TYPES, AXES, isHidden, typeNo } from './data.js';
 import { charaDataURL, shade, tint } from './chara.js';
 
 export const FONT = '"M PLUS Rounded 1c", "Hiragino Maru Gothic ProN", "Hiragino Sans", "Noto Sans JP", sans-serif';
@@ -98,7 +98,7 @@ function fitFont(ctx, text, weight, start, min, maxWidth) {
 const hostOf = (origin) => origin.replace(/^https?:\/\//, '').replace(/\/$/, '');
 
 // ストーリーズ・TikTok用 1080×1920
-export async function drawStoryCard({ index, purity, title, rarity }) {
+export async function drawStoryCard({ index, purity, title, rarity, gold = false }) {
   const t = TYPES[index];
   const W = 1080;
   const H = 1920;
@@ -127,9 +127,25 @@ export async function drawStoryCard({ index, purity, title, rarity }) {
   roundRect(ctx, 60, 70, W - 120, H - 140, 56);
   ctx.fillStyle = '#FFFDF9';
   ctx.fill();
-  ctx.lineWidth = 8;
-  ctx.strokeStyle = shade(t.color, 0.25);
-  ctx.stroke();
+  if (gold) {
+    // 完全版の購入者だけが保存できる金の枠
+    const g = ctx.createLinearGradient(0, 0, W, H);
+    ['#B8862B', '#F7E08A', '#C9973A', '#FFF1B8', '#B8862B'].forEach((c, k) => g.addColorStop(k / 4, c));
+    ctx.lineWidth = 22;
+    ctx.strokeStyle = g;
+    ctx.stroke();
+    roundRect(ctx, W / 2 - 150, 52, 300, 52, 26);
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.fillStyle = '#5A3E0A';
+    ctx.font = `800 30px ${FONT}`;
+    ctx.textAlign = 'center';
+    ctx.fillText('完全版 GOLD', W / 2, 89);
+  } else {
+    ctx.lineWidth = 8;
+    ctx.strokeStyle = shade(t.color, 0.25);
+    ctx.stroke();
+  }
 
   ctx.textBaseline = 'alphabetic';
   ctx.textAlign = 'left';
@@ -137,7 +153,7 @@ export async function drawStoryCard({ index, purity, title, rarity }) {
   ctx.font = `800 40px ${FONT}`;
   ctx.fillText(SITE.name, 120, 160);
   ctx.textAlign = 'right';
-  ctx.fillText(index === HIDDEN_INDEX ? '隠しタイプ' : `No.${typeNo(index)}`, W - 120, 160);
+  ctx.fillText(isHidden(index) ? `隠しタイプ ${typeNo(index)}` : `No.${typeNo(index)}`, W - 120, 160);
 
   ctx.textAlign = 'center';
   ctx.fillStyle = INK;
@@ -250,7 +266,7 @@ export async function drawOgCard(index) {
   ctx.textAlign = 'left';
   ctx.fillStyle = shade(t.color, 0.45);
   ctx.font = `800 34px ${FONT}`;
-  ctx.fillText(`${SITE.quizName}　${index === HIDDEN_INDEX ? '隠しタイプ' : `No.${typeNo(index)}`}`, 560, 150);
+  ctx.fillText(`${SITE.quizName}　${isHidden(index) ? `隠しタイプ ${typeNo(index)}` : `No.${typeNo(index)}`}`, 560, 150);
   ctx.fillStyle = INK;
   fitFont(ctx, t.label, 800, 84, 48, W - 620);
   ctx.fillText(t.label, 556, 260);
@@ -277,7 +293,7 @@ export async function drawTopOg() {
   canvas.width = W;
   canvas.height = H;
   const ctx = canvas.getContext('2d');
-  await ensureFonts(`${SITE.name}${SITE.quizName}16タイプ＋隠しタイプ12問・1分あなたの愛すべきポンコツは？`);
+  await ensureFonts(`${SITE.name}${SITE.quizName}16タイプ＋隠し4タイプ20問・2分あなたの愛すべきポンコツは？`);
   ctx.fillStyle = '#FFF4E8';
   ctx.fillRect(0, 0, W, H);
   ctx.textAlign = 'center';
@@ -288,7 +304,7 @@ export async function drawTopOg() {
   ctx.font = `800 88px ${FONT}`;
   ctx.fillText(SITE.quizName, W / 2, 196);
   ctx.font = `500 34px ${FONT}`;
-  ctx.fillText('12問・1分でわかる、あなたの“愛すべきポンコツ”', W / 2, 256);
+  ctx.fillText('20問・約2分でわかる、あなたの“愛すべきポンコツ”', W / 2, 256);
   const lineup = [3, 6, 8, 12, 10, 14, 7, 1];
   const imgs = await Promise.all(lineup.map((i) => loadImage(charaDataURL(i))));
   imgs.forEach((img, k) => ctx.drawImage(img, 30 + k * 142, 300, 150, 150));
@@ -297,7 +313,7 @@ export async function drawTopOg() {
   ctx.fill();
   ctx.fillStyle = '#fff';
   ctx.font = `800 38px ${FONT}`;
-  ctx.fillText('16タイプ＋隠しタイプ', W / 2, 541);
+  ctx.fillText('16タイプ＋隠し4タイプ', W / 2, 541);
   return canvas;
 }
 
@@ -326,7 +342,7 @@ export async function drawIntroSlide(index) {
   ctx.font = `800 40px ${FONT}`;
   ctx.fillText(SITE.name, 120, 160);
   ctx.textAlign = 'right';
-  ctx.fillText(index === HIDDEN_INDEX ? '隠しタイプ' : `No.${typeNo(index)}`, W - 120, 160);
+  ctx.fillText(isHidden(index) ? `隠しタイプ ${typeNo(index)}` : `No.${typeNo(index)}`, W - 120, 160);
 
   const img = await loadImage(charaDataURL(index));
   ctx.drawImage(img, W / 2 - 260, 190, 520, 520);
@@ -362,5 +378,219 @@ export async function drawIntroSlide(index) {
   ctx.font = `500 34px ${FONT}`;
   ctx.fillStyle = shade(t.color, 0.4);
   ctx.fillText('診断はプロフのリンクから', W / 2, 1800);
+  return canvas;
+}
+
+
+function frame(ctx, W, H, color) {
+  ctx.fillStyle = tint(color, 0.6);
+  ctx.fillRect(0, 0, W, H);
+  roundRect(ctx, 60, 70, W - 120, H - 140, 56);
+  ctx.fillStyle = '#FFFDF9';
+  ctx.fill();
+  ctx.lineWidth = 8;
+  ctx.strokeStyle = shade(color, 0.25);
+  ctx.stroke();
+}
+
+function newCanvas(W, H) {
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  return [canvas, canvas.getContext('2d')];
+}
+
+// 成分表カード 1080×1920（食品表示のパロディ）
+export async function drawLabelCard({ index, purity, sums, axisPct }) {
+  const t = TYPES[index];
+  const W = 1080;
+  const H = 1920;
+  const [canvas, ctx] = newCanvas(W, H);
+  await ensureFonts(`${SITE.name}${t.label}${t.ingredients.join('')}${t.habitat}${t.caution}${AXES.map((a) => a.neg + a.pos).join('')}わたしの成分表名称原材料名内容量保存方法製造者栄養成分表示1人あたりポンコツ純度あなたは何タイプ？%0123456789`);
+  frame(ctx, W, H, t.color);
+  ctx.textAlign = 'center';
+  ctx.fillStyle = INK;
+  ctx.font = `800 64px ${FONT}`;
+  ctx.fillText('わたしの成分表', W / 2, 200);
+  const img = await loadImage(charaDataURL(index));
+  ctx.drawImage(img, W / 2 - 170, 230, 340, 340);
+
+  // 表示ラベルの枠
+  const x0 = 130;
+  const x1 = W - 130;
+  let y = 640;
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = INK;
+  const rows = [
+    ['名称', t.label],
+    ['原材料名', t.ingredients.join('、')],
+    ['内容量', `ポンコツ純度 ${purity}%`],
+    ['保存方法', t.habitat],
+    ['製造者', SITE.name],
+  ];
+  ctx.strokeRect(x0, y, x1 - x0, 0);
+  rows.forEach(([k, v]) => {
+    ctx.textAlign = 'left';
+    ctx.font = `800 36px ${FONT}`;
+    ctx.fillStyle = INK;
+    ctx.fillText(k, x0 + 24, y + 58);
+    ctx.font = `500 38px ${FONT}`;
+    const lines = wrap(ctx, v, x1 - x0 - 270, false);
+    lines.forEach((line, i) => ctx.fillText(line, x0 + 250, y + 58 + i * 52));
+    const h = 36 + lines.length * 52;
+    ctx.beginPath();
+    ctx.moveTo(x0 + 230, y);
+    ctx.lineTo(x0 + 230, y + h);
+    ctx.stroke();
+    y += h;
+    ctx.strokeRect(x0, y, x1 - x0, 0);
+  });
+  ctx.strokeRect(x0, 640, x1 - x0, y - 640);
+
+  // 栄養成分表示
+  y += 60;
+  ctx.textAlign = 'left';
+  ctx.font = `800 38px ${FONT}`;
+  ctx.fillText('栄養成分表示（1人あたり）', x0, y);
+  y += 24;
+  ctx.lineWidth = 6;
+  ctx.strokeRect(x0, y, x1 - x0, 0);
+  AXES.forEach((a, k) => {
+    const name = sums[k] > 0 ? a.pos : a.neg;
+    y += 66;
+    ctx.font = `500 40px ${FONT}`;
+    ctx.textAlign = 'left';
+    ctx.fillText(name, x0 + 10, y);
+    ctx.textAlign = 'right';
+    ctx.font = `800 40px ${FONT}`;
+    ctx.fillText(`${axisPct[k]}%`, x1 - 10, y);
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x0, y + 20, x1 - x0, 0);
+  });
+
+  y += 100;
+  ctx.textAlign = 'left';
+  ctx.font = `500 36px ${FONT}`;
+  ctx.fillStyle = shade(t.color, 0.45);
+  wrap(ctx, `※${t.caution}`, x1 - x0).forEach((line, i) => ctx.fillText(line, x0, y + i * 50));
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = INK;
+  ctx.font = `800 40px ${FONT}`;
+  ctx.fillText('あなたは何タイプ？', W / 2, 1774);
+  ctx.font = `500 32px ${FONT}`;
+  ctx.fillStyle = shade(t.color, 0.4);
+  ctx.fillText(`${hostOf(SITE.origin)}  #${SITE.hashtag}`, W / 2, 1822);
+  return canvas;
+}
+
+// ふたりの相性カード 1080×1920
+export async function drawPairCard({ a, b, nameA, nameB, compat }) {
+  const ta = TYPES[a.index];
+  const tb = TYPES[b.index];
+  const W = 1080;
+  const H = 1920;
+  const [canvas, ctx] = newCanvas(W, H);
+  await ensureFonts(`${SITE.name}${nameA}${nameB}${ta.label}${tb.label}${compat.rank}${compat.good}${compat.care || ''}ふたりの相性ただし、あなたたちは？%0123456789×`);
+  const bg = ctx.createLinearGradient(0, 0, W, H);
+  bg.addColorStop(0, tint(ta.color, 0.55));
+  bg.addColorStop(1, tint(tb.color, 0.55));
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+  roundRect(ctx, 60, 70, W - 120, H - 140, 56);
+  ctx.fillStyle = '#FFFDF9';
+  ctx.fill();
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = INK;
+  ctx.font = `800 40px ${FONT}`;
+  ctx.fillText(SITE.name, W / 2, 170);
+  ctx.font = `800 72px ${FONT}`;
+  ctx.fillText('ふたりの相性', W / 2, 270);
+
+  const [ia, ib] = await Promise.all([loadImage(charaDataURL(a.index)), loadImage(charaDataURL(b.index))]);
+  ctx.drawImage(ia, 100, 330, 400, 400);
+  ctx.drawImage(ib, W - 500, 330, 400, 400);
+  [[nameA, ta.label, 300], [nameB, tb.label, W - 300]].forEach(([n, l, x]) => {
+    ctx.fillStyle = INK;
+    ctx.font = `800 48px ${FONT}`;
+    ctx.fillText(n, x, 790);
+    fitFont(ctx, l, 500, 34, 22, 400);
+    ctx.fillStyle = shade(ta.color, 0.4);
+    ctx.fillText(l, x, 842);
+  });
+  ctx.fillStyle = INK;
+  ctx.font = `800 64px ${FONT}`;
+  ctx.fillText('×', W / 2, 560);
+
+  ctx.font = `800 200px ${FONT}`;
+  ctx.fillStyle = '#FF7A59';
+  ctx.fillText(`${compat.score}%`, W / 2, 1100);
+  const rank = compat.rank;
+  ctx.font = `800 52px ${FONT}`;
+  const rw = ctx.measureText(rank).width + 90;
+  roundRect(ctx, W / 2 - rw / 2, 1150, rw, 86, 43);
+  ctx.fillStyle = INK;
+  ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.fillText(rank, W / 2, 1212);
+
+  ctx.fillStyle = INK;
+  ctx.font = `500 44px ${FONT}`;
+  let y = 1340;
+  for (const line of wrap(ctx, `${compat.good}。`, W - 240)) {
+    ctx.fillText(line, W / 2, y);
+    y += 64;
+  }
+  if (compat.care) {
+    y += 20;
+    ctx.font = `800 42px ${FONT}`;
+    for (const line of wrap(ctx, `ただし、${compat.care}。`, W - 240)) {
+      const lw = ctx.measureText(line).width;
+      ctx.fillStyle = 'rgba(255, 214, 77, .75)';
+      ctx.fillRect(W / 2 - lw / 2 - 10, y - 22, lw + 20, 28);
+      ctx.fillStyle = INK;
+      ctx.fillText(line, W / 2, y);
+      y += 62;
+    }
+  }
+  ctx.fillStyle = INK;
+  ctx.font = `800 40px ${FONT}`;
+  ctx.fillText('あなたたちは？', W / 2, 1774);
+  ctx.font = `500 32px ${FONT}`;
+  ctx.fillStyle = '#8A7A7F';
+  ctx.fillText(`${hostOf(SITE.origin)}  #${SITE.hashtag}`, W / 2, 1822);
+  return canvas;
+}
+
+// ペア・グループのURL用OGP 1200×630
+export async function drawFeatureOg(kind) {
+  const W = 1200;
+  const H = 630;
+  const [canvas, ctx] = newCanvas(W, H);
+  const head = kind === 'group' ? 'グループ診断' : 'ふたりの相性';
+  const sub = kind === 'group' ? 'みんなのタイプと役割が1ページに' : 'ふたりの相性は何％？';
+  await ensureFonts(`${SITE.name}${SITE.quizName}${head}${sub}`);
+  ctx.fillStyle = '#FFF4E8';
+  ctx.fillRect(0, 0, W, H);
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#8A7A7F';
+  ctx.font = `800 34px ${FONT}`;
+  ctx.fillText(`${SITE.name}｜${SITE.quizName}`, W / 2, 90);
+  ctx.fillStyle = INK;
+  ctx.font = `800 92px ${FONT}`;
+  ctx.fillText(head, W / 2, 200);
+  ctx.font = `500 38px ${FONT}`;
+  ctx.fillText(sub, W / 2, 262);
+  const lineup = kind === 'group' ? [12, 3, 15, 6, 10, 14] : [3, 15];
+  const size = kind === 'group' ? 180 : 260;
+  const imgs = await Promise.all(lineup.map((i) => loadImage(charaDataURL(i))));
+  const start = (W - lineup.length * size) / 2;
+  imgs.forEach((img, k) => ctx.drawImage(img, start + k * size, 300, size, size));
+  if (kind !== 'group') {
+    ctx.fillStyle = '#FF7A59';
+    ctx.font = `800 80px ${FONT}`;
+    ctx.fillText('♡', W / 2, 460);
+  }
   return canvas;
 }

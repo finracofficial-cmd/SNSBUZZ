@@ -20,6 +20,9 @@ const LOOKS = [
   { shape: 'round', ears: 'roundSmall', eyes: 'swirl', mouth: 'wavy', belly: true, back: ['wheel'], front: ['sweat'] },
   { shape: 'round', ears: 'none', eyes: 'happy', mouth: 'open', back: ['tentacles'], front: ['hearts'] },
   { shape: 'screen', ears: 'none', eyes: 'pixel', mouth: 'pixel', front: ['signal'] },
+  { shape: 'round', ears: 'pig', eyes: 'teary', mouth: 'snout', front: ['coinSlot', 'emptyCoins'] },
+  { shape: 'wide', ears: 'none', eyes: 'sparkle', mouth: 'whiskers', belly: true, front: ['flippers', 'onigiri'] },
+  { shape: 'wide', ears: 'none', eyes: 'dot', mouth: 'smile', back: ['snakeTail'], belly: true, bellyColor: '#F3E9C6', front: ['mystery'] },
 ];
 
 const hex = (c) => c.replace('#', '').match(/../g).map((h) => parseInt(h, 16));
@@ -75,6 +78,8 @@ function ears(kind, fill, inner, stroke) {
         <ellipse cx="156" cy="104" rx="16" ry="32" transform="rotate(-18 156 80)" fill="${inner}" ${s}/>`;
     case 'tuft':
       return `<path d="M54 70 L50 40 L78 58 Z" fill="${fill}" ${s}/><path d="M146 70 L150 40 L122 58 Z" fill="${fill}" ${s}/>`;
+    case 'pig':
+      return `<path d="M50 80 L52 46 L80 62 Z" fill="${inner}" ${s}/><path d="M150 80 L148 46 L120 62 Z" fill="${inner}" ${s}/>`;
     case 'crest':
       return `<path d="M92 60 C86 40 96 30 100 30 C100 44 104 50 108 60 C112 46 120 40 128 42 C120 50 116 58 112 66 Z" fill="#F29B4B" ${s}/>`;
     default:
@@ -132,6 +137,13 @@ function mouth(kind) {
       return `<path d="M88 126 q12 0 24 0 q0 16 -12 16 q-12 0 -12 -16 Z" fill="#E2566B" stroke="${INK}" stroke-width="4" stroke-linejoin="round"/>`;
     case 'beak':
       return `<path d="M90 124 L110 124 L100 138 Z" fill="#F29B4B" stroke="${INK}" stroke-width="3.5" stroke-linejoin="round"/>`;
+    case 'snout':
+      return `<ellipse cx="100" cy="132" rx="17" ry="12" fill="#F6A5B5" stroke="${INK}" stroke-width="3.5"/>
+        <ellipse cx="94" cy="132" rx="3" ry="4.5" fill="${INK}"/><ellipse cx="106" cy="132" rx="3" ry="4.5" fill="${INK}"/>`;
+    case 'whiskers':
+      return `<path d="M94 126 q6 6 12 0" fill="none" stroke="${INK}" stroke-width="4" stroke-linecap="round"/>
+        <circle cx="100" cy="121" r="5" fill="${INK}"/>
+        <path d="M70 128 l-18 -4 M70 134 l-18 2 M130 128 l18 -4 M130 134 l18 2" stroke="${INK}" stroke-width="2.5" stroke-linecap="round"/>`;
     case 'pixel':
       return `<path d="M86 124 h6 v6 h16 v-6 h6 v6 h-6 v6 h-16 v-6 h-6 Z" fill="#1F2A3A"/>`;
     default:
@@ -156,6 +168,8 @@ function backParts(list, fill, stroke) {
           return `<path d="M86 74 C96 46 116 40 128 44 C120 56 118 66 120 78 Z" fill="${shade(fill, 0.1)}" ${s}/>`;
         case 'fishTail':
           return `<path d="M168 122 L196 96 L192 150 Z" fill="${shade(fill, 0.1)}" ${s}/>`;
+        case 'snakeTail':
+          return `<path d="M160 140 C196 136 196 176 170 178 C182 168 176 156 156 160 Z" fill="${shade(fill, 0.08)}" ${s}/>`;
         case 'wheel':
           return `<circle cx="100" cy="112" r="92" fill="none" stroke="#C9B7A5" stroke-width="7"/>
             <circle cx="100" cy="112" r="92" fill="none" stroke="#E9DED2" stroke-width="3" stroke-dasharray="6 14"/>`;
@@ -210,6 +224,20 @@ function frontParts(list, color) {
         case 'calendar':
           return `<rect x="140" y="126" width="44" height="42" rx="6" fill="#fff" ${s}/><path d="M140 140 h44" ${s}/>
             <path d="M148 150 h6 M160 150 h6 M172 150 h6 M148 160 h6 M160 160 h6 M172 160 h6" stroke="#2D3446" stroke-width="5" stroke-linecap="round"/>`;
+        case 'coinSlot':
+          return `<rect x="86" y="62" width="28" height="7" rx="3.5" fill="${INK}"/>`;
+        case 'emptyCoins':
+          return `<circle cx="164" cy="166" r="12" fill="#FFE27A" ${s}/><path d="M160 166 h8" ${s}/>
+            <path d="M30 70 q4 -8 8 0 M40 60 q4 -8 8 0" fill="none" stroke="#B49A5A" stroke-width="3" stroke-linecap="round"/>`;
+        case 'flippers':
+          return `<ellipse cx="44" cy="156" rx="18" ry="9" transform="rotate(-25 44 156)" fill="${color}" ${s}/>
+            <ellipse cx="156" cy="156" rx="18" ry="9" transform="rotate(25 156 156)" fill="${color}" ${s}/>`;
+        case 'onigiri':
+          return `<path d="M150 112 L176 150 L124 150 Z" fill="#fff" ${s}/><rect x="138" y="136" width="24" height="14" fill="#2D3446"/>`;
+        case 'mystery':
+          return `<text x="160" y="60" font-size="34" font-weight="800" fill="#7FB3A6" font-family="sans-serif">?</text>
+            <text x="28" y="78" font-size="26" font-weight="800" fill="#B49A5A" font-family="sans-serif">?</text>
+            <path d="M172 92 L175 100 L183 103 L175 106 L172 114 L169 106 L161 103 L169 100 Z" fill="#FFD84D"/>`;
         case 'signal':
           return `<path d="M162 34 a20 20 0 0 1 20 20 M162 22 a32 32 0 0 1 32 32" fill="none" stroke="#8CF2E0" stroke-width="5" stroke-linecap="round"/>`;
         default:
@@ -241,7 +269,7 @@ export function charaSVG(index, { size = 200 } = {}) {
     ? '<rect x="60" y="60" width="80" height="100" rx="12" fill="#8CF2E0"/><circle cx="100" cy="172" r="4" fill="#8CF2E0"/>'
     : '';
   const cheeks = look.shape === 'screen' ? '' : `<ellipse cx="64" cy="128" rx="9" ry="6" fill="#FF8FA3" opacity=".55"/><ellipse cx="136" cy="128" rx="9" ry="6" fill="#FF8FA3" opacity=".55"/>`;
-  const arms = look.shape === 'screen' || (look.front || []).includes('blanket')
+  const arms = look.shape === 'screen' || ['blanket', 'flippers'].some((f) => (look.front || []).includes(f))
     ? ''
     : `<ellipse cx="${look.shape === 'wide' ? 34 : 40}" cy="140" rx="11" ry="15" transform="rotate(25 40 140)" fill="${fill}" stroke="${stroke}" stroke-width="4"/>
        <ellipse cx="${look.shape === 'wide' ? 166 : 160}" cy="140" rx="11" ry="15" transform="rotate(-25 160 140)" fill="${fill}" stroke="${stroke}" stroke-width="4"/>`;
