@@ -344,6 +344,8 @@ button:focus-visible, a:focus-visible { outline: 3px solid #FFB199; outline-offs
   position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 1;
   background: rgba(59, 47, 51, .82); color: #fff; font-weight: 800; font-size: 13px; padding: 6px 14px; border-radius: 999px; white-space: nowrap;
 }
+.mosaic .lock small { font-weight: 700; font-size: 11px; opacity: .85; margin-left: 6px; }
+.mosaic:focus-visible { outline: 3px solid var(--type-deep); outline-offset: 2px; }
 
 /* ステータス */
 .radar-wrap { max-width: 320px; margin: 0 auto; }

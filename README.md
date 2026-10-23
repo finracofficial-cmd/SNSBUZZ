@@ -2,18 +2,22 @@
 
 SNSでUGCとして拡散するWebコンテンツの調査と、その第1弾「愛されポンコツ診断（ポンコツ図鑑）」の実装です。
 
+- **かんたん診断**（12問・約1分・全部無料）で、20タイプ（うち隠し4タイプ）のどれかがわかります。
+- **くわしい診断**（＋24問・約3分）を足すと、二つ名（240通り）・恋愛タイプ（8種）・10項目のステータスがわかります。
+- くわしい診断のレポート（全8章）は、ふんわりした部分を無料で見せます。くわしい部分はモザイクで、完全版（390円・買い切り）で読めます。
+
 ## 中身
 
 | 場所 | 中身 |
 |---|---|
 | `reports/` | 調査レポート（何を作るべきか） |
-| `research_notes/` | 調査メモ。`v2_benchmarks/` は成功例の結果ページの作りと、マネタイズの調査 |
-| `docs/design.md` | 診断の設計（軸・20タイプ・20問・拡散の仕組み・KPI・公開前のTODO） |
-| `docs/monetization.md` | マネタイズ計画（完全版・LINEスタンプ・B2B・広告・試算） |
+| `research_notes/` | 調査メモ。`v2_benchmarks/` は結果ページの作りとマネタイズ、`v3/` はチラ見せ・ペイウォール・2段階診断・友達クイズの調査 |
+| `docs/design.md` | 診断の設計（12問＋24問・20タイプ・パラメータ・二つ名・レポートの章立て・拡散の仕組み・KPI・公開前のTODO） |
+| `docs/monetization.md` | マネタイズ計画（無料と有料の分け方・完全版の購入の流れ・おうちの人の支払い・LINEスタンプ・B2B・広告・試算） |
 | `docs/competitor_check.md` | 日本の類似診断の競合チェック |
-| `content/` | タイプごとの文言（`types/NN.json`）と執筆ガイド（`BRIEF.md`） |
+| `content/` | タイプごとの文言（`types/NN.json`）、パラメータ（`params.json`）、恋愛タイプ（`love.json`）と執筆ガイド（`BRIEF.md`・`BRIEF_v3.md`） |
 | `site/` | サイト本体（静的HTML＋ESモジュール。ビルドしなくても動く） |
-| `functions/` | Cloudflare Pages Functions（集計・グループ診断・完全版の決済と配信） |
+| `functions/` | Cloudflare Pages Functions（集計・グループ診断・完全版の決済と配信・見本・おうちの人の支払いの受け取り） |
 | `scripts/` | 文言の生成と検査、ビルド、OGP画像、SNS素材、スモークテスト |
 
 ## 動かし方
@@ -22,7 +26,7 @@ Node.js 20以上が必要です。
 
 ```sh
 npm install
-npm test           # 判定・相性・レア度のテスト
+npm test           # 判定・相性・レア度・二つ名・結果コード・APIのテスト
 npm run build      # 文言を生成して site/ → dist/。タイプ別・おさそい・ペア・グループの着地ページも作る
 npm run serve      # http://localhost:8787 で dist/ を表示（APIなし。グループ診断と完全版は使えない）
 ```
@@ -33,8 +37,14 @@ npm run serve      # http://localhost:8787 で dist/ を表示（APIなし。グ
 
 ```sh
 npx wrangler d1 execute ponkotsu-zukan --local --file=schema.sql
-npm run build && npx wrangler pages dev --port 8788 \
+npm run build && npx wrangler pages dev --port 8799 \
   --binding PREMIUM_SECRET=dev-secret --binding PROMO_CODES=TEST2027 --binding KPI_TOKEN=dev
+```
+
+起動したまま、別のターミナルで通しの確認ができます。
+
+```sh
+node scripts/e2e-api.mjs   # 第1章の見本・コードで開く・引き継ぎリンク・おうちの人の支払い・グループ参加
 ```
 
 ### 文言と画像
@@ -42,11 +52,12 @@ npm run build && npx wrangler pages dev --port 8788 \
 Chromium を使います。`CHROMIUM_PATH` でパスを指定できます。
 
 ```sh
-npm run validate   # content/types/*.json の文字数・NGワードを検査
-npm run content    # site/assets/types.js（無料部分）と functions/_lib/premium.js（有料部分）を生成
+npm run validate   # content/ の文字数・NGワード（占い・予言の語を含む）を検査
+npm run content    # site/assets/types.js（無料部分と有料の文字数）と functions/_lib/premium.js（有料部分）を生成
 npm run og         # OGP画像を site/og/ に書き出す（コミットする）
 npm run cards      # SNS投稿用の画像を cards/ に書き出す（タイプ紹介スライドと結果カードの見本）
-npm run smoke      # スマホ幅で 診断→結果→シェア画像→おさそい→ふたりの相性→図鑑 を通しで操作し、JSエラーを確認
+npm run smoke      # スマホ幅で かんたん診断→くわしい診断→レポート（モザイク）→シェア画像→おさそい→相性→わたしクイズ→図鑑 を通しで操作。
+                   # JSエラー・有料文の漏れ・購入案内の自動表示が1回までか・4つの画面幅での横はみ出しを確認
 ```
 
 ## 公開手順（Cloudflare Pages + D1）
@@ -60,6 +71,8 @@ npm run smoke      # スマホ幅で 診断→結果→シェア画像→おさ�
    npx wrangler d1 execute ponkotsu-zukan --remote --file=schema.sql
    ```
 
+   v2から更新するときも、同じコマンドで `claims` テーブル（おうちの人の支払いの受け取り）が足されます。
+
 3. 環境変数（シークレット）を設定する。
 
    ```sh
@@ -72,8 +85,10 @@ npm run smoke      # スマホ幅で 診断→結果→シェア画像→おさ�
    | `RATE_SALT` | 回数制限に使うIPのハッシュ用の塩 | 推奨 |
    | `PREMIUM_SECRET` | 完全版の購入トークンの署名鍵（長いランダム文字列） | 完全版を出すなら必須 |
    | `STRIPE_SECRET_KEY` | Stripe のシークレットキー | 販売するなら必須 |
-   | `STRIPE_PRICE_ID` | 390円の価格ID | 販売するなら必須 |
-   | `PREMIUM_PRICE` | 画面に出す価格（既定 390） | 任意 |
+   | `STRIPE_PRICE_ID` | 390円（じぶん用）の価格ID | 販売するなら必須 |
+   | `PREMIUM_PRICE` | 画面に出す、じぶん用の価格（既定 390）。Stripeの価格と同じにする | 任意 |
+   | `STRIPE_PRICE_ID_DUO` | 590円（ふたり用・友達に1つプレゼント）の価格ID。設定したときだけ、ふたり用を出す | 任意 |
+   | `PREMIUM_PRICE_DUO` | 画面に出す、ふたり用の価格（既定 590） | 任意 |
    | `PROMO_CODES` | 完全版を開けるコード（カンマ区切り。キャンペーン・タイアップ用） | 任意 |
 
    `PREMIUM_SECRET`・`STRIPE_SECRET_KEY`・`STRIPE_PRICE_ID` の3つがそろうと、販売が始まります。そろっていない間は「準備中」と表示されます。
@@ -89,6 +104,21 @@ npm run smoke      # スマホ幅で 診断→結果→シェア画像→おさ�
    ```sh
    curl -H "Authorization: Bearer <KPI_TOKEN>" https://<ドメイン>/api/stats?all=1
    ```
+
+### API
+
+| パス | 中身 |
+|---|---|
+| `POST /api/event` | 診断の開始・完了・シェアなどを数える（回数だけ） |
+| `GET /api/stats` | タイプ別の完了数（レア度用）。`?all=1` と `KPI_TOKEN` で全カウンタ |
+| `POST /api/groups` ・ `GET/POST /api/groups/<id>` | グループ診断の作成・表示・参加 |
+| `GET /api/premium/status` | 販売中かどうかと、プラン・価格 |
+| `GET /api/sample` | くわしい診断の第1章の見本（二つ名のもとになった1項目の解説）。無料 |
+| `GET /api/premium` | 完全版の本文。購入トークンが必要 |
+| `POST /api/checkout` | Stripe Checkout の支払いページを作る |
+| `GET /api/unlock` | 支払いを確かめて購入トークンを出す（ふたり用ならプレゼント用も） |
+| `GET /api/claim` | おうちの人の支払いが終わったら、子どもの端末にトークンを渡す |
+| `POST /api/redeem` | キャンペーンのコードでトークンを出す |
 
 静的配信と Functions・D1 は Cloudflare の無料枠でほぼ収まります。AI生成は使っていないので、利用者が増えても1診断あたりの原価はかかりません。
 

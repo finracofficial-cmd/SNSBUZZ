@@ -173,11 +173,12 @@ function currentClaim() {
   return c.rid;
 }
 
-function askGuardian(r) {
+async function askGuardian(r) {
   const rid = currentClaim() || randomId();
   if (rid !== currentClaim()) store.set('claimRid', { rid, at: Date.now() });
   const url = `${ORIGIN}/#/buy/${rid}`;
-  const text = `「${SITE.quizName}」の完全版（${SITE.premiumPrice}円）を買ってもらえませんか？ このリンクから支払うと、私のスマホで読めるようになります`;
+  const price = (await premiumStatus()).plans?.[0]?.price ?? SITE.premiumPrice;
+  const text = `「${SITE.quizName}」の完全版（${price}円）を買ってもらえませんか？ このリンクから支払うと、私のスマホで読めるようになります`;
   track('paywall', 'ask');
   openModal(`
     <h2 class="sheet-title">おうちの人に払ってもらう</h2>

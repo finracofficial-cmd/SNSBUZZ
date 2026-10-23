@@ -44,7 +44,9 @@ export function startQuiz(mode) {
     offset: saved ? QUESTIONS.length : 0, // 通し番号のずれ
     continued: !!saved,
   };
-  track(mode === 'quick' ? 'start' : 'detail', mode === 'quick' ? '' : 'start');
+  // かんたん診断の開始（くわしい診断を最初から始めた人も含める）と、くわしい診断の開始を数える
+  if (mode === 'quick' || !saved) track('start', '');
+  if (mode === 'detail') track('detail', 'start');
   if (mode === 'detail') viewChapterIntro(saved ? 0 : -1);
   else viewStep();
 }

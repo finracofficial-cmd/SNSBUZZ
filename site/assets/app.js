@@ -19,7 +19,7 @@ import {
   receiveQuizScore,
   viewQuizBoard,
 } from './social.js';
-import { completePurchase, viewBuyFor, acceptToken, maybeShowAfterPurchase, watchClaim } from './premium.js';
+import { completePurchase, viewBuyFor, acceptToken, maybeShowAfterPurchase, watchClaim, premiumStatus } from './premium.js';
 
 // ---------- ホーム ----------
 function viewHome() {
@@ -76,8 +76,10 @@ function viewAbout() {
     ${foot()}`);
 }
 
-function viewLegal() {
+async function viewLegal() {
   const s = SITE.seller;
+  const plans = (await premiumStatus()).plans || [];
+  const priceOf = (id) => plans.find((p) => p.id === id)?.price;
   render(`
     ${brand()}
     <div class="card"><h2>特定商取引法に基づく表記</h2>
@@ -85,7 +87,7 @@ function viewLegal() {
         <dt>販売事業者</dt><dd>${esc(s.name)}</dd>
         <dt>所在地・電話番号</dt><dd>${esc(s.address)}</dd>
         <dt>お問い合わせ</dt><dd>${esc(s.contact)}</dd>
-        <dt>販売価格</dt><dd>完全版（じぶん用）${SITE.premiumPrice}円（税込）。ふたり用を販売する場合は購入画面に表示する価格（税込）</dd>
+        <dt>販売価格</dt><dd>完全版（じぶん用）${priceOf('solo') ?? SITE.premiumPrice}円（税込）${priceOf('duo') ? `、完全版（ふたり用）${priceOf('duo')}円（税込）` : ''}</dd>
         <dt>商品代金以外の費用</dt><dd>インターネット接続にかかる通信料</dd>
         <dt>支払方法</dt><dd>クレジットカード、Apple Pay、Google Pay、PayPayなど（決済サービス Stripe で表示されるもの）</dd>
         <dt>支払時期</dt><dd>ご注文時に決済されます</dd>

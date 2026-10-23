@@ -10,6 +10,8 @@ const count = 20;
 const types = [];
 const premiumTypes = {};
 const missing = [];
+// 有料の文章の「文字数」だけは無料側にも出す（モザイクの長さと「約〇字」の表示に使う。中身は出さない）
+const len = (s) => Array.from(s || '').length;
 
 for (let i = 0; i < count; i++) {
   const no = String(i).padStart(2, '0');
@@ -20,6 +22,9 @@ for (let i = 0; i < count; i++) {
   const { premium: p, trigger, ...free } = t;
   // 有料部分の冒頭だけを「続きは完全版で」の予告として無料側に出す
   free.teaser = p?.deep ? `${Array.from(p.deep).slice(0, 38).join('')}…` : '';
+  free.premiumLen = p
+    ? { deep: len(p.deep), growth: (p.growth || []).map(len), loveDeep: len(p.loveDeep), next: len(p.next), letter: len(p.letter) }
+    : null;
   types.push(free);
   if (p) premiumTypes[i] = p;
 }
@@ -27,7 +32,7 @@ for (let i = 0; i < count; i++) {
 // くわしい診断：パラメータの段階ごとの文言（lead は無料、detail は有料）
 const PARAM_KEYS = ['koi', 'yaki', 'samishi', 'mousou', 'oshi', 'tsukkomi'];
 const params = JSON.parse(fs.readFileSync(path.resolve('content/params.json'), 'utf8'));
-const paramText = PARAM_KEYS.map((k) => (params[k] || [{}, {}, {}]).map((lv) => ({ lead: lv.lead || '' })));
+const paramText = PARAM_KEYS.map((k) => (params[k] || [{}, {}, {}]).map((lv) => ({ lead: lv.lead || '', len: len(lv.detail) })));
 const paramDetail = PARAM_KEYS.map((k) => (params[k] || [{}, {}, {}]).map((lv) => lv.detail || ''));
 
 // 恋愛タイプ（name・catch・lead・best は無料、detail・tips・bestWhy は有料）
@@ -36,7 +41,13 @@ const loveFree = [];
 const loveDetail = [];
 for (let i = 0; i < 8; i++) {
   const l = love.find((x) => x.index === i) || { index: i, name: '', catch: '', lead: '', best: i ^ 6 };
-  loveFree.push({ name: l.name, catch: l.catch, lead: l.lead, best: l.best });
+  loveFree.push({
+    name: l.name,
+    catch: l.catch,
+    lead: l.lead,
+    best: l.best,
+    len: { detail: len(l.detail), tips: (l.tips || []).map(len), bestWhy: len(l.bestWhy) },
+  });
   loveDetail.push({ detail: l.detail || '', tips: l.tips || [], bestWhy: l.bestWhy || '' });
 }
 

@@ -24,19 +24,24 @@ function dummy(index, seed, length) {
   let out = '';
   for (let i = 0; i < length; i++) {
     x = (x * 1103515245 + 12345) >>> 0;
-    out += pool[x % pool.length];
-    if (i % 23 === 22) out += '。';
+    out += i % 23 === 22 || i === length - 1 ? '。' : pool[x % pool.length];
   }
   return out;
 }
 
-const mosaic = (index, seed, length, lines = null) => `
-  <div class="mosaic" data-paywall aria-label="完全版で読めます">
-    ${lines
-      ? `<ul>${Array.from({ length: lines }, (_, k) => `<li>${dummy(index, seed + k, length)}</li>`).join('')}</ul>`
-      : `<p>${dummy(index, seed, length)}</p>`}
-    <span class="lock">完全版で読めます</span>
+// length は購入後に表示される文章の文字数（types.js の premiumLen など）。長さを本物とそろえ、「約〇字」と量を見せる。
+// lines を渡すと箇条書き（各項目の文字数の配列）。
+const approx = (n) => (n >= 100 ? Math.round(n / 10) * 10 : n);
+const mosaic = (index, seed, length, lines = null) => {
+  const total = lines ? lines.reduce((a, b) => a + b, 0) : length;
+  return `
+  <div class="mosaic" data-paywall role="button" tabindex="0" aria-label="完全版で読めます（約${approx(total)}字）">
+    <div aria-hidden="true">${lines
+      ? `<ul>${lines.map((n, k) => `<li>${dummy(index, seed + k, n)}</li>`).join('')}</ul>`
+      : `<p>${dummy(index, seed, length)}</p>`}</div>
+    <span class="lock" aria-hidden="true">完全版で読めます<small>約${approx(total)}字</small></span>
   </div>`;
+};
 
 // ---------- 章 ----------
 function chapter(no, title, body, { free = false, locked = false } = {}) {
@@ -79,7 +84,7 @@ function paramChapter(r, prem) {
     return `<div class="param-item">
       <div class="pi-head"><b>${esc(p.name)}</b><span class="chip soft">${LEVEL_NAMES[lv]}</span><span class="srank r${rankOf(r.params[k])}">${rankOf(r.params[k])}</span></div>
       <p class="lead-line">${esc(lead)}</p>
-      ${prem?.params ? `<p>${esc(prem.params[k])}</p>` : k === r.nickname.param ? '<p class="hint">（くわしい解説は第1章の見本で読めます）</p>' : mosaic(r.index, 10 + k, 150)}
+      ${prem?.params ? `<p>${esc(prem.params[k])}</p>` : k === r.nickname.param ? '<p class="hint">（くわしい解説は第1章の見本で読めます）</p>' : mosaic(r.index, 10 + k, PARAM_TEXT[k][lv].len)}
     </div>`;
   }).join('');
 }
@@ -91,7 +96,7 @@ function loveChapter(r, prem) {
     <div class="love-head"><span class="love-name">${esc(l.name)}</span><p class="catch-line">${esc(l.catch)}</p></div>
     <p class="lead-line">${esc(l.lead)}</p>
     ${prem?.love ? `<p>${esc(prem.love.detail)}</p>
-      <h3>恋のアドバイス</h3><ol class="tips">${prem.love.tips.map((x) => `<li>${esc(x)}</li>`).join('')}</ol>` : `${mosaic(r.index, 30, 200)}<h3>恋のアドバイス</h3>${mosaic(r.index, 40, 18, 3)}`}
+      <h3>恋のアドバイス</h3><ol class="tips">${prem.love.tips.map((x) => `<li>${esc(x)}</li>`).join('')}</ol>` : `${mosaic(r.index, 30, l.len.detail)}<h3>恋のアドバイス</h3>${mosaic(r.index, 40, 0, l.len.tips)}`}
     <div class="best"><span class="chip">相性のいい恋愛タイプ</span> <b>${esc(best.name)}</b>
       ${prem?.love ? `<p>${esc(prem.love.bestWhy)}</p>` : `<p class="hint">理由は完全版で読めます</p>`}</div>`;
 }
@@ -99,13 +104,23 @@ function loveChapter(r, prem) {
 function premiumChapters(r, prem) {
   const t = TYPES[r.index];
   const p = prem?.type;
+  const n = t.premiumLen;
   return [
-    chapter(4, '本当のあなた', p ? `<p>${esc(p.deep)}</p>` : `<p class="lead-line">${esc(t.teaser)}</p>${mosaic(r.index, 50, 180)}`, { locked: !p }),
-    chapter(5, 'ポンコツを武器にする3つの方法', p ? `<ol class="tips">${p.growth.map((g) => `<li>${esc(g)}</li>`).join('')}</ol>` : mosaic(r.index, 60, 28, 3), { locked: !p }),
-    chapter(6, '恋愛の落とし穴と攻略法', p ? `<p>${esc(p.loveDeep)}</p>` : mosaic(r.index, 70, 180), { locked: !p }),
-    chapter(7, '2027年の過ごし方ヒント', p ? `<p>${esc(p.next)}</p>` : mosaic(r.index, 80, 160), { locked: !p }),
-    chapter(8, 'お守りメッセージ', p ? `<div class="letter"><p>${esc(p.letter)}</p></div>` : mosaic(r.index, 90, 80), { locked: !p }),
+    chapter(4, '本当のあなた', p ? `<p>${esc(p.deep)}</p>` : `<p class="lead-line">${esc(t.teaser)}</p>${mosaic(r.index, 50, n.deep)}`, { locked: !p }),
+    chapter(5, 'ポンコツを武器にする3つの方法', p ? `<ol class="tips">${p.growth.map((g) => `<li>${esc(g)}</li>`).join('')}</ol>` : mosaic(r.index, 60, 0, n.growth), { locked: !p }),
+    chapter(6, '恋愛の落とし穴と攻略法', p ? `<p>${esc(p.loveDeep)}</p>` : mosaic(r.index, 70, n.loveDeep), { locked: !p }),
+    chapter(7, '2027年の過ごし方ヒント', p ? `<p>${esc(p.next)}</p>` : mosaic(r.index, 80, n.next), { locked: !p }),
+    chapter(8, 'お守りメッセージ', p ? `<div class="letter"><p>${esc(p.letter)}</p></div>` : mosaic(r.index, 90, n.letter), { locked: !p }),
   ].join('');
+}
+
+// モザイクの下にある文章の合計（購入すると読める量）
+function lockedLength(r) {
+  const n = TYPES[r.index].premiumLen;
+  const l = LOVE_TYPES[r.love].len;
+  const sum = (a) => a.reduce((x, y) => x + y, 0);
+  const params = PARAMS.reduce((acc, _, k) => (k === r.nickname.param ? acc : acc + PARAM_TEXT[k][paramLevel(r.params[k])].len), 0);
+  return params + l.detail + sum(l.tips) + l.bestWhy + n.deep + sum(n.growth) + n.loveDeep + n.next + n.letter;
 }
 
 // ---------- ページ ----------
@@ -122,6 +137,7 @@ export async function viewReport(r, shareId) {
   const prem = unlocked ? await fetchPremium(r) : null;
   const s = await premiumStatus();
   const price = s.plans?.[0]?.price ?? SITE.premiumPrice;
+  const locked = prem ? 0 : approx(lockedLength(r)).toLocaleString('ja-JP');
 
   render(`
     ${brand()}
@@ -145,14 +161,14 @@ export async function viewReport(r, shareId) {
         <button class="btn sub small" data-prof>プロフ帳カード</button>
       </div>
     </section>
-    ${prem ? '' : `<div class="paynote">第1〜3章のふんわり部分と、第1章の見本は無料。くわしい部分（第2〜8章）は完全版 <b>${price}円</b>（税込・1回だけ・自動更新なし）で読めます。</div>`}
+    ${prem ? '' : `<div class="paynote">第1〜3章のふんわり部分と、第1章の見本は無料。くわしい部分（第2〜8章・約${locked}字）は完全版 <b>${price}円</b>（税込・1回だけ・自動更新なし）で読めます。</div>`}
     <nav class="secnav" aria-label="もくじ">${[1, 2, 3, 4, 5, 6, 7, 8].map((n) => `<button data-scroll="ch${n}">第${n}章</button>`).join('')}</nav>
     ${chapter(1, 'あなたのステータス', statusChapter(r, prem), { free: true })}
     ${prem ? '' : `<div class="cta-inline"><p>第2〜8章とステータスの数値は完全版で</p><button class="btn gold small" data-paywall>完全版を見る（${price}円）</button></div>`}
     ${chapter(2, 'パラメータ解説', paramChapter(r, prem), { locked: !prem })}
     ${chapter(3, `恋愛タイプ「${love.name}」`, loveChapter(r, prem), { locked: !prem })}
     ${premiumChapters(r, prem)}
-    ${prem ? '' : `<p class="hint center">※モザイクはイメージです。購入後は、見出しの数と同じだけの文章が表示されます。</p>`}
+    ${prem ? '' : `<p class="hint center">※モザイクはイメージです。購入すると、モザイクの部分に、表示している文字数どおりの文章が出ます。</p>`}
     <section class="card"><h2>もっと遊ぶ</h2>
       <div class="btn-col">
         <a class="btn sub" href="${typePath(r.index)}">${esc(t.label)}の解説（性格・恋愛・友達・学校・トリセツ）</a>
@@ -163,13 +179,23 @@ export async function viewReport(r, shareId) {
     </section>
     <button class="btn sub" data-go="#/zukan">図鑑をみる</button>
     ${foot()}
-    ${prem ? '' : `<div class="paybar" role="region" aria-label="完全版"><span>のこり<b>7章</b>がモザイク中</span><button class="btn gold small" data-paywall>${price}円で全部読む</button></div>`}`, r.index);
+    ${prem ? '' : `<div class="paybar" role="region" aria-label="完全版"><span>のこり<b>7章・約${locked}字</b>がモザイク中</span><button class="btn gold small" data-paywall>${price}円で全部読む</button></div>`}`, r.index);
 
   document.body.classList.toggle('has-paybar', !prem);
   app.querySelectorAll('[data-scroll]').forEach((b) =>
     b.addEventListener('click', () => app.querySelector(`#${b.dataset.scroll}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })),
   );
-  app.querySelectorAll('[data-paywall]').forEach((el) => el.addEventListener('click', () => openPaywall(r)));
+  app.querySelectorAll('[data-paywall]').forEach((el) => {
+    el.addEventListener('click', () => openPaywall(r));
+    if (el.classList.contains('mosaic')) {
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          openPaywall(r);
+        }
+      });
+    }
+  });
   app.querySelectorAll('[data-invite]').forEach((b) => b.addEventListener('click', () => openInviteModal(r)));
   app.querySelector('[data-quiz-create]').addEventListener('click', () => openQuizCreate(r));
   app.querySelector('[data-group]').addEventListener('click', openGroupCreate);
