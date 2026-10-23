@@ -24,3 +24,14 @@ export async function verifyToken(env, token) {
 }
 
 export const premiumEnabled = (env) => !!(env.STRIPE_SECRET_KEY && env.STRIPE_PRICE_ID && env.PREMIUM_SECRET);
+
+// 販売するプラン。「ふたり用」は STRIPE_PRICE_ID_DUO があるときだけ出す
+export function plansOf(env) {
+  const plans = [{ id: 'solo', price: Number(env.PREMIUM_PRICE || 390), priceId: env.STRIPE_PRICE_ID, name: 'じぶん用' }];
+  if (env.STRIPE_PRICE_ID_DUO) {
+    plans.push({ id: 'duo', price: Number(env.PREMIUM_PRICE_DUO || 590), priceId: env.STRIPE_PRICE_ID_DUO, name: 'ふたり用（友達に1つプレゼント）' });
+  }
+  return plans.map(({ priceId, ...rest }) => ({ ...rest, available: !!priceId }));
+}
+
+export const priceIdOf = (env, plan) => (plan === 'duo' ? env.STRIPE_PRICE_ID_DUO : env.STRIPE_PRICE_ID);

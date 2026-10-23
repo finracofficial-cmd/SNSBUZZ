@@ -1,21 +1,20 @@
-// 診断結果とタイプ詳細のページ。16Personalities のタイプページのように、
-// 性格・恋愛・友達・学校・トリセツ・相性まで1ページで読めるようにしている。
+// かんたん診断の結果・タイプ詳細・図鑑（シール帳）のページ。
+// かんたん診断の結果は「シェアしやすさ」と「くわしい診断への入口」を優先した軽い作りにし、
+// タイプの読みもの（性格・恋愛・友達・学校・トリセツ）はタイプページにまとめる。
 import { SITE } from './config.js';
-import { AXES, TYPES, HIDDEN, BASE_COUNT, isHidden, typeNo } from './data.js';
+import { AXES, TYPES, HIDDEN, BASE_COUNT, PARAMS, isHidden, typeNo } from './data.js';
 import { titleOf, rarityOf, priorDistribution, compatRanking, compatOf, axisLine, decodeResult, encodeResult } from './logic.js';
 import { charaSVG } from './chara.js';
+import { radarSVG } from './radar.js';
 import { drawStoryCard, drawLabelCard, canvasToBlob } from './card.js';
 import { app, ORIGIN, esc, store, track, loadStats, render, toast, foot, brand, shareLinks, shareImageBlob, openModal, inAppHint } from './ui.js';
-import { invitePairBox, openInviteModal, openGroupCreate, friends } from './social.js';
-import { premiumSection, mountPremium, hasPremium } from './premium.js';
+import { invitePairBox, openInviteModal, openGroupCreate, openQuizCreate, friends } from './social.js';
+import { openProfileCard } from './profile.js';
 
 const noLabel = (index) => (isHidden(index) ? `隠しタイプ ${typeNo(index)}` : `No.${typeNo(index)}`);
 export const typePath = (index) => `#/t/${typeNo(index).toLowerCase()}`;
 
-function shareUrl(index, shareId) {
-  return `${ORIGIN}/t/${typeNo(index).toLowerCase()}/?s=${shareId}`;
-}
-
+const shareUrl = (index, shareId) => `${ORIGIN}/t/${typeNo(index).toLowerCase()}/?s=${shareId}`;
 function shareText(r) {
   const t = TYPES[r.index];
   return `私は【${t.label}（${titleOf(r.purity)}）】でした。ポンコツ純度${r.purity}%\n${t.roast}\n#${SITE.hashtag} あなたは何タイプ？`;
@@ -49,87 +48,50 @@ function axisBars(r) {
   }).join('');
 }
 
-const NAV = [
-  ['sec-self', '性格'],
-  ['sec-label', '成分表'],
-  ['sec-love', '恋愛'],
-  ['sec-friend', '友達'],
-  ['sec-school', '学校・バイト'],
-  ['sec-toriset', 'トリセツ'],
-  ['sec-compat', '相性'],
-  ['premium', '完全版'],
-];
-
-// タイプの読みもの部分（結果ページとタイプページで共通）
-function typeSections(index, r) {
+// 相性（相性◎・刺激しあう相手・友達・全タイプ）
+function compatSection(index, r) {
   const t = TYPES[index];
   const base = r ? r.baseIndex : isHidden(index) ? null : index;
-  const ranking = base == null ? [] : compatRanking(base);
-  const met = new Map(friends().map((f) => [f.result.index, f.name]));
+  const ranking = base == null ? [] : compatRanking(base).filter((x) => x.index !== base);
   const myCode = r ? encodeResult(r) : '';
-  const friendScores = r
+  const fr = r
     ? friends()
         .slice(0, 12)
         .map((f) => ({ ...f, c: compatOf(r, f.result) }))
         .sort((x, y) => y.c.score - x.c.score)
     : [];
-  return `
-    <nav class="secnav" aria-label="もくじ">${NAV.map(([id, l]) => `<button data-scroll="${id}">${l}</button>`).join('')}</nav>
-    <section class="card" id="sec-self"><h2>基本の性格</h2>
-      <p>${esc(t.summary)}</p>
-      <div class="two">
-        <div><h3>愛されポイント</h3><ul class="points good">${t.charm.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>
-        <div><h3>ポンコツポイント</h3><ul class="points bad">${t.ponkotsu.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>
-      </div>
-      ${r ? `<h3>あなたの4つの軸</h3>${axisBars(r)}` : ''}
-    </section>
-    <section class="card" id="sec-label"><h2>成分表</h2>${labelPanel(index, r)}
-      ${r ? '<button class="btn sub small" data-card="label">成分表を画像で保存</button>' : ''}
-    </section>
-    <section class="card"><h2>あるある</h2><ul class="aru">${t.aru.map((a) => `<li>${esc(a)}</li>`).join('')}</ul></section>
-    <section class="card" id="sec-love"><h2>恋愛</h2><p>${esc(t.love)}</p>
-      <ul class="aru">${t.loveAru.map((a) => `<li>${esc(a)}</li>`).join('')}</ul></section>
-    <section class="card" id="sec-friend"><h2>友達・グループでは</h2>
-      <p><span class="chip">${esc(t.role)}</span></p><p>${esc(t.friend)}</p>
-      <h3>推し活</h3><p>${esc(t.oshi)}</p>
-      <h3>トーク・SNS</h3><p>${esc(t.sns)}</p>
-      <h3>休日</h3><p>${esc(t.holiday)}</p>
-      <h3>落ちこんだときの復活法</h3><p>${esc(t.recover)}</p>
-    </section>
-    <section class="card" id="sec-school"><h2>学校・バイト・仕事</h2><p>${esc(t.school)}</p>
-      <h3>向いてるかもしれないバイト・仕事</h3><div class="chips">${t.jobs.map((j) => `<span class="chip soft">${esc(j)}</span>`).join('')}</div></section>
-    <section class="card" id="sec-toriset"><h2>${esc(t.chara)}のトリセツ</h2>
-      <div class="two">
-        <div><h3>こうしてくれるとうれしい</h3><ul class="points good">${t.toriset.do.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>
-        <div><h3>これはやめてね</h3><ul class="points bad">${t.toriset.dont.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>
-      </div>
-      <dl class="facts"><dt>生息地</dt><dd>${esc(t.habitat)}</dd><dt>口ぐせ</dt><dd>「${esc(t.kuchiguse)}」</dd></dl>
-    </section>
-    <section class="card" id="sec-compat"><h2>相性</h2>
-      <div class="best"><span class="chip">相性◎</span> <a href="${typePath(t.best)}"><b>${esc(TYPES[t.best].label)}</b></a><p>${esc(t.bestWhy)}</p></div>
-      ${ranking.length ? (() => {
-        const low = ranking[ranking.length - 1];
-        const c = low.care || low.good;
-        return `<div class="best caution"><span class="chip">刺激しあう</span> <a href="${typePath(low.index)}"><b>${esc(TYPES[low.index].label)}</b></a><p>${esc(c)}。おたがいのトリセツを読んでおくと安心。</p></div>`;
-      })() : ''}
-      ${r && friendScores.length ? `<h3>友達との相性</h3><ol class="ranking">${friendScores.map((f) => `
-        <li><a href="#/pair/${f.code}/${myCode}/${encodeURIComponent(f.name)}/${encodeURIComponent('わたし')}">${charaSVG(f.result.index, { size: 36 })}<span class="rl">${esc(f.name)}さん<small class="met">${esc(TYPES[f.result.index].label)}</small></span>
-          <span class="rs"><i style="width:${f.c.score}%"></i></span><b>${f.c.score}%</b></a></li>`).join('')}</ol>` : ''}
-      <h3>全タイプとの相性</h3>
-      ${ranking.length ? `<ol class="ranking">${ranking.filter((x) => x.index !== base).map((x) => `
-        <li><a href="${typePath(x.index)}">${charaSVG(x.index, { size: 36 })}<span class="rl">${esc(TYPES[x.index].label)}${met.has(x.index) ? `<small class="met">${esc(met.get(x.index))}さん</small>` : ''}</span>
-          <span class="rs"><i style="width:${x.score}%"></i></span><b>${x.score}%</b></a></li>`).join('')}</ol>` : ''}
-      ${r ? '<button class="btn type" data-invite>友達と相性をくらべる</button>' : ''}
-    </section>`;
+  const low = ranking[ranking.length - 1];
+  const row = (i, name, score, href) => `<li><a href="${href}">${charaSVG(i, { size: 36 })}<span class="rl">${name}</span>
+    <span class="rs"><i style="width:${score}%"></i></span><b>${score}%</b></a></li>`;
+  return `<section class="card" id="sec-compat"><h2>相性</h2>
+    <div class="best"><span class="chip">相性◎</span> <a href="${typePath(t.best)}"><b>${esc(TYPES[t.best].label)}</b></a><p>${esc(t.bestWhy)}</p></div>
+    ${low ? `<div class="best caution"><span class="chip">刺激しあう</span> <a href="${typePath(low.index)}"><b>${esc(TYPES[low.index].label)}</b></a><p>${esc(low.care || low.good)}。おたがいのトリセツを読んでおくと安心。</p></div>` : ''}
+    ${fr.length ? `<h3>友達との相性</h3><ol class="ranking">${fr.map((f) => row(f.result.index, `${esc(f.name)}さん<small class="met">${esc(TYPES[f.result.index].label)}</small>`, f.c.score, `#/pair/${f.code}/${myCode}/${encodeURIComponent(f.name)}/${encodeURIComponent('わたし')}`)).join('')}</ol>` : ''}
+    ${ranking.length ? `<details class="more"><summary>全タイプとの相性を見る</summary><ol class="ranking">${ranking.map((x) => row(x.index, esc(TYPES[x.index].label), x.score, typePath(x.index))).join('')}</ol></details>` : ''}
+    ${r ? '<button class="btn type" data-invite>友達と相性をくらべる</button>' : ''}
+  </section>`;
 }
 
-function scrollNav(root) {
-  root.querySelectorAll('[data-scroll]').forEach((b) =>
-    b.addEventListener('click', () => root.querySelector(`#${b.dataset.scroll}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })),
-  );
+// くわしい診断への入口（ふんわり見せる）
+function detailTeaser(r) {
+  const t = TYPES[r.index];
+  const done = store.get('mineDetail', null);
+  const doneHere = done && done.code.startsWith(`${encodeResult(r)}~`);
+  const fake = [62, 48, 70, 35, 80, 30, 66, 52, 74, 40];
+  return `<section class="card teaser-card">
+    <p class="lead">くわしい診断（無料・あと24問・約3分）</p>
+    <h2 class="teaser-title"><span class="blurred">？？？な</span>${esc(t.label)}</h2>
+    <p>あなたの<b>二つ名</b>（240通り）と<b>恋愛タイプ</b>（8種類）、<b>10項目のステータス</b>がわかります。</p>
+    <div class="teaser-radar">${radarSVG(fake, { masked: true, size: 240 })}</div>
+    <ul class="includes small">${PARAMS.map((p) => `<li>${esc(p.name)}</li>`).join('')}</ul>
+    ${doneHere
+      ? `<a class="btn type" href="#/r/${esc(done.code)}/${esc(done.shareId)}">くわしい診断の結果を見る</a>`
+      : '<button class="btn type" data-go="#/d">くわしい診断に進む</button>'}
+    <p class="hint center">かんたん診断の答えを引きつぐので、続きの24問だけでOK</p>
+  </section>`;
 }
 
-// ---------- 結果ページ ----------
+// ---------- かんたん診断の結果 ----------
 export async function viewResult(r, shareId) {
   const t = TYPES[r.index];
   const title = titleOf(r.purity);
@@ -138,6 +100,7 @@ export async function viewResult(r, shareId) {
   const ura = TYPES[r.ura.index];
   const text = shareText(r);
   const url = shareUrl(r.index, shareId);
+  const boardCount = store.get('quizScores', []).length;
   render(`
     ${brand()}
     <section class="result">
@@ -156,45 +119,61 @@ export async function viewResult(r, shareId) {
       <button class="btn type" data-card="story">画像を保存してストーリーズへ</button>
       ${shareLinks({ text, url, channelPrefix: '' }).html}
       ${inAppHint()}
-      <button class="btn sub" data-invite>友達と相性をくらべる</button>
+      <div class="btn-row">
+        <button class="btn sub small" data-card="label">成分表カード</button>
+        <button class="btn sub small" data-prof>プロフ帳カード</button>
+      </div>
     </section>
     <div class="tiles">
       <div class="tile"><b>ポンコツ純度</b><strong>${r.purity}%</strong><small>${esc(title)}</small></div>
       <div class="tile"><b>レア度</b><strong>${rarity.pct.toFixed(1)}%</strong><small>${rarity.source === 'actual' ? '診断した人の中で' : '理論値'}</small></div>
       <a class="tile" href="${typePath(r.ura.index)}"><b>裏タイプ</b><strong class="small">${esc(ura.label)}</strong><small>もうひとつの顔</small></a>
     </div>
-    ${typeSections(r.index, r)}
-    ${premiumSection(r.index)}
-    <section class="card"><h2>みんなで遊ぶ</h2>
-      <p>クラスや部活、推し仲間のグループで診断すると、メンバーの役割（幹事役・癒し担当…）と、いちばん相性のいいペアがわかります。</p>
-      <button class="btn sub" data-group>グループ診断をつくる</button>
+    ${detailTeaser(r)}
+    <section class="card"><h2>あなたの4つの軸</h2>${axisBars(r)}</section>
+    <section class="card"><h2>成分表</h2>${labelPanel(r.index, r)}</section>
+    <section class="card"><h2>あるある</h2><ul class="aru">${t.aru.map((a) => `<li>${esc(a)}</li>`).join('')}</ul></section>
+    ${compatSection(r.index, r)}
+    <section class="card"><h2>${esc(t.label)}をもっと知る</h2>
+      <p>性格・恋愛・友達・学校・バイト・推し活・トリセツまで、タイプの解説を全部読めます。</p>
+      <a class="btn sub" href="${typePath(r.index)}">${esc(t.label)}の解説を読む</a>
+    </section>
+    <section class="card"><h2>友達と遊ぶ</h2>
+      <div class="btn-col">
+        <button class="btn sub" data-quiz-create>わたしクイズを出す（友達が答えを当てる）</button>
+        <button class="btn sub" data-group>グループ診断をつくる（クラス・部活・推し仲間）</button>
+        ${boardCount ? `<a class="btn sub" href="#/qboard">わたしクイズの成績表（${boardCount}人）</a>` : ''}
+      </div>
     </section>
     <button class="btn" data-go="#/q">もう一回診断する</button>
     <button class="btn sub" data-go="#/zukan">図鑑をみる（全${TYPES.length}タイプ）</button>
     ${foot()}`, r.index);
 
-  const ctx = { ...r, title, rarity, gold: hasPremium() };
+  const ctx = { ...r, title, rarity };
   app.querySelectorAll('[data-card]').forEach((b) =>
-    b.addEventListener('click', () => saveCard(b.dataset.card, ctx, `${text}\n${url}`)),
+    b.addEventListener('click', async () => {
+      toast('画像をつくっています…');
+      const canvas = b.dataset.card === 'label' ? await drawLabelCard(ctx) : await drawStoryCard(ctx);
+      track('share', b.dataset.card === 'label' ? 'label-image' : 'image');
+      await shareImageBlob(await canvasToBlob(canvas), { name: `ponkotsu-${typeNo(r.index)}-${b.dataset.card}.png`, text: `${text}\n${url}`, alt: `${t.label}のシェア画像` });
+    }),
   );
   app.querySelectorAll('[data-invite]').forEach((b) => b.addEventListener('click', () => openInviteModal(r)));
+  app.querySelector('[data-quiz-create]').addEventListener('click', () => openQuizCreate(r));
   app.querySelector('[data-group]').addEventListener('click', openGroupCreate);
-  scrollNav(app);
-  mountPremium(app, r.index, { onGold: () => saveCard('story', { ...ctx, gold: true }, `${text}\n${url}`) });
-}
-
-async function saveCard(kind, ctx, text) {
-  toast('画像をつくっています…');
-  const canvas = kind === 'label' ? await drawLabelCard(ctx) : await drawStoryCard(ctx);
-  track('share', kind === 'label' ? 'label-image' : ctx.gold ? 'gold-image' : 'image');
-  await shareImageBlob(await canvasToBlob(canvas), {
-    name: `ponkotsu-${typeNo(ctx.index)}-${kind}.png`,
-    text,
-    alt: `${TYPES[ctx.index].label}のシェア画像`,
-  });
+  app.querySelector('[data-prof]').addEventListener('click', () => openProfileCard(r));
 }
 
 // ---------- タイプ詳細（シェアURLの着地点・図鑑から） ----------
+const NAV = [
+  ['sec-self', '性格'],
+  ['sec-love', '恋愛'],
+  ['sec-friend', '友達'],
+  ['sec-school', '学校・バイト'],
+  ['sec-toriset', 'トリセツ'],
+  ['sec-compat', '相性'],
+];
+
 export function viewType(index) {
   const t = TYPES[index];
   const mine = store.get('mine', null);
@@ -215,14 +194,47 @@ export function viewType(index) {
       <p class="catch-line">${esc(t.catch)}</p>
       <p class="praise">${esc(t.praise)}</p>
       <p class="roast"><span>${esc(t.roast)}</span></p>
-      <button class="btn" data-go="#/q">${mine ? 'もう一回診断する' : 'あなたは何タイプ？診断する（無料）'}</button>
+      <button class="btn" data-go="#/q">${mine ? 'もう一回診断する' : 'あなたは何タイプ？診断する（無料・1分）'}</button>
     </section>
-    ${typeSections(index, null)}
-    ${premiumSection(index)}
+    <nav class="secnav" aria-label="もくじ">${NAV.map(([id, l]) => `<button data-scroll="${id}">${l}</button>`).join('')}</nav>
+    <section class="card" id="sec-self"><h2>基本の性格</h2>
+      <p>${esc(t.summary)}</p>
+      <div class="two">
+        <div><h3>愛されポイント</h3><ul class="points good">${t.charm.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>
+        <div><h3>ポンコツポイント</h3><ul class="points bad">${t.ponkotsu.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>
+      </div>
+    </section>
+    <section class="card"><h2>成分表</h2>${labelPanel(index, null)}</section>
+    <section class="card"><h2>あるある</h2><ul class="aru">${t.aru.map((a) => `<li>${esc(a)}</li>`).join('')}</ul></section>
+    <section class="card" id="sec-love"><h2>恋愛</h2><p>${esc(t.love)}</p>
+      <ul class="aru">${t.loveAru.map((a) => `<li>${esc(a)}</li>`).join('')}</ul>
+      <p class="hint">あなたの恋愛タイプ（8種類）は、くわしい診断でわかります。</p></section>
+    <section class="card" id="sec-friend"><h2>友達・グループでは</h2>
+      <p><span class="chip">${esc(t.role)}</span></p><p>${esc(t.friend)}</p>
+      <h3>推し活</h3><p>${esc(t.oshi)}</p>
+      <h3>トーク・SNS</h3><p>${esc(t.sns)}</p>
+      <h3>休日</h3><p>${esc(t.holiday)}</p>
+      <h3>落ちこんだときの復活法</h3><p>${esc(t.recover)}</p>
+    </section>
+    <section class="card" id="sec-school"><h2>学校・バイト・仕事</h2><p>${esc(t.school)}</p>
+      <h3>向いてるかもしれないバイト・仕事</h3><div class="chips">${t.jobs.map((j) => `<span class="chip soft">${esc(j)}</span>`).join('')}</div></section>
+    <section class="card" id="sec-toriset"><h2>${esc(t.chara)}のトリセツ</h2>
+      <div class="two">
+        <div><h3>こうしてくれるとうれしい</h3><ul class="points good">${t.toriset.do.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>
+        <div><h3>これはやめてね</h3><ul class="points bad">${t.toriset.dont.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>
+      </div>
+      <dl class="facts"><dt>生息地</dt><dd>${esc(t.habitat)}</dd><dt>口ぐせ</dt><dd>「${esc(t.kuchiguse)}」</dd></dl>
+    </section>
+    ${compatSection(index, null)}
+    <section class="card"><h2>このタイプの人へ</h2>
+      <p>くわしい診断（無料）では、二つ名・恋愛タイプ・10項目のステータスがわかります。完全版では「本当のあなた」や恋愛の攻略法まで読めます。</p>
+      <button class="btn type" data-go="#/d">くわしい診断をする</button>
+    </section>
     <button class="btn sub" data-go="#/zukan">図鑑をみる</button>
     ${foot()}`, index);
-  scrollNav(app);
-  mountPremium(app, index);
+  app.querySelectorAll('[data-scroll]').forEach((b) =>
+    b.addEventListener('click', () => app.querySelector(`#${b.dataset.scroll}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })),
+  );
   return true;
 }
 
@@ -233,7 +245,7 @@ export function unlockedHidden() {
   return set;
 }
 
-// ---------- 図鑑 ----------
+// ---------- 図鑑（シール帳） ----------
 export function viewZukan() {
   const mine = store.get('mine', null);
   const fr = friends();
@@ -243,32 +255,32 @@ export function viewZukan() {
     byType.get(f.result.index).push(f.name);
   });
   const got = unlockedHidden();
-  const met = new Set([...byType.keys(), ...(mine ? [mine.index] : [])]);
+  const met = new Set([...byType.keys(), ...(mine && TYPES[mine.index] ? [mine.index] : [])]);
   const cards = TYPES.map((t, i) => {
     const locked = isHidden(i) && !got.has(i);
     const isMine = mine && mine.index === i;
     const names = byType.get(i) || [];
-    return `<a class="zcard ${isMine ? 'mine' : ''} ${locked ? 'locked' : ''} ${met.has(i) ? 'met' : ''}" href="${typePath(i)}">
+    const tilt = ((i * 37) % 9) - 4;
+    return `<a class="sticker ${isMine ? 'mine' : ''} ${locked ? 'locked' : ''} ${met.has(i) ? 'met' : ''}" href="${typePath(i)}" style="--tilt:${tilt}deg">
       ${isMine ? '<span class="me">あなた</span>' : ''}
-      ${charaSVG(i, { size: 150 })}
-      <div class="n">${noLabel(i)}</div>
-      <div class="l">${locked ? '？？？' : esc(t.label)}</div>
-      ${names.length ? `<div class="friends-on">${names.slice(0, 3).map(esc).join('・')}${names.length > 3 ? ` ほか${names.length - 3}人` : ''}</div>` : ''}
+      <span class="seal">${charaSVG(i, { size: 120 })}</span>
+      <span class="n">${noLabel(i)}</span>
+      <span class="l">${locked ? '？？？' : esc(t.label)}</span>
+      ${names.length ? `<span class="friends-on">${names.slice(0, 2).map(esc).join('・')}${names.length > 2 ? ` ほか${names.length - 2}人` : ''}</span>` : ''}
     </a>`;
   }).join('');
   render(`
     ${brand()}
     <section class="zukan">
       <h1>ポンコツ図鑑</h1>
-      <p class="hint" style="margin:0">全${BASE_COUNT}タイプ＋隠しタイプ${HIDDEN.length}つ。友達と相性をくらべると、そのタイプが図鑑に登録されます。</p>
-      <div class="complete"><span>出会ったタイプ</span><b>${met.size} / ${TYPES.length}</b><i style="width:${(met.size / TYPES.length) * 100}%"></i></div>
-      <div class="grid">${cards}</div>
+      <p class="hint" style="margin:0">全${BASE_COUNT}タイプ＋隠しタイプ${HIDDEN.length}つのシール帳。友達と相性をくらべたり、クイズに答えたりすると、そのタイプのシールが集まります。</p>
+      <div class="complete"><span>集めたシール</span><b>${met.size} / ${TYPES.length}</b><i style="width:${(met.size / TYPES.length) * 100}%"></i></div>
+      <div class="stickerbook">${cards}</div>
     </section>
-    ${mine ? '<button class="btn type" data-invite-mine style="margin-top:20px">友達を誘って図鑑をうめる</button>' : '<button class="btn" data-go="#/q" style="margin-top:20px">診断する</button>'}
+    ${mine ? '<button class="btn type" data-invite-mine style="margin-top:20px">友達を誘ってシールを集める</button>' : '<button class="btn" data-go="#/q" style="margin-top:20px">診断する</button>'}
     ${foot()}`);
   app.querySelector('[data-invite-mine]')?.addEventListener('click', () => {
     const r = decodeResult(mine.code);
     if (r) openInviteModal(r);
   });
 }
-

@@ -46,7 +46,11 @@ export const NG = [
   'MBTI', 'SBTI', 'LINE', 'ライン', 'インスタ', 'Instagram', 'TikTok', 'ティックトック', 'YouTube', 'ユーチューブ', 'ツイッター', 'Twitter',
   'メンヘラ', '病み', 'コミュ障', '陰キャ', '陽キャ', 'ブス', 'デブ', 'バカ', 'アホ', '頭が悪', '死ぬ', '死に', '消えたい', '鬱', 'うつ病', '発達', 'ADHD', '障害',
   '彼氏', '彼女', 'お酒', '酒', 'ビール', '飲み会', 'タバコ', 'ギャンブル', 'パチンコ',
+  // 「占い」に見える言葉（Stripe Japan の禁止業種対策）
+  '占い', '運勢', '運気', '開運', '星座', '守護霊', '前世', '引き寄せ', 'スピリチュアル', '大吉', '吉日', '運命',
 ];
+// 予言のように読める言い回し（2027年の章などは「行動の提案」として書く）
+export const PREDICTION = ['ありそう', '訪れ', '起こりそう', '待っている予感', '巡ってく', 'チャンスが来る'];
 
 function check(file) {
   const errors = [];
@@ -82,6 +86,51 @@ function check(file) {
     if (all.includes(w)) errors.push(`NGワード「${w}」`);
   });
   if (/[!?]/.test(all.replace(/https?:\/\/\S+/g, ''))) errors.push('半角の ! ? は全角にする');
+  PREDICTION.forEach((w) => {
+    if (t.premium && JSON.stringify(t.premium).includes(w)) errors.push(`予言っぽい言い回し「${w}」`);
+  });
+  return errors;
+}
+
+// くわしい診断のパラメータ文言（content/params.json）
+export function checkParams(obj) {
+  const errors = [];
+  const keys = ['koi', 'yaki', 'samishi', 'mousou', 'oshi', 'tsukkomi'];
+  keys.forEach((k) => {
+    const levels = obj[k];
+    if (!Array.isArray(levels) || levels.length !== 3) {
+      errors.push(`${k}: 3段階（低め・ふつう・高め）が必要`);
+      return;
+    }
+    levels.forEach((lv, i) => {
+      if (typeof lv.lead !== 'string' || len(lv.lead) < 25 || len(lv.lead) > 60) errors.push(`${k}[${i}].lead: ${len(lv.lead || '')}字（25〜60字）`);
+      if (typeof lv.detail !== 'string' || len(lv.detail) < 140 || len(lv.detail) > 230) errors.push(`${k}[${i}].detail: ${len(lv.detail || '')}字（140〜230字）`);
+    });
+  });
+  return errors;
+}
+
+// 恋愛タイプ（content/love.json）
+export function checkLove(list) {
+  const errors = [];
+  if (!Array.isArray(list) || list.length !== 8) return ['恋愛タイプは8つ必要'];
+  list.forEach((l, i) => {
+    if (l.index !== i) errors.push(`love[${i}].index がずれている`);
+    if (l.best !== (i ^ 6)) errors.push(`love[${i}].best は ${i ^ 6}`);
+    [['name', 4, 12], ['catch', 6, 18], ['lead', 40, 80], ['detail', 160, 240], ['bestWhy', 15, 45]].forEach(([k, min, max]) => {
+      if (typeof l[k] !== 'string' || len(l[k]) < min || len(l[k]) > max) errors.push(`love[${i}].${k}: ${len(l[k] || '')}字（${min}〜${max}字）`);
+    });
+    if (!Array.isArray(l.tips) || l.tips.length !== 3 || l.tips.some((x) => len(x) > 30 || len(x) < 8)) errors.push(`love[${i}].tips: 8〜30字を3つ`);
+  });
+  return errors;
+}
+
+function checkWords(obj, where) {
+  const errors = [];
+  const all = JSON.stringify(obj);
+  NG.forEach((w) => all.includes(w) && errors.push(`${where}: NGワード「${w}」`));
+  PREDICTION.forEach((w) => all.includes(w) && errors.push(`${where}: 予言っぽい言い回し「${w}」`));
+  if (/[!?]/.test(all)) errors.push(`${where}: 半角の ! ? は全角にする`);
   return errors;
 }
 
@@ -99,6 +148,23 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       console.log(`✗ ${f}\n  - ${errors.join('\n  - ')}`);
     } else {
       console.log(`✓ ${f}`);
+    }
+  }
+  if (!only.length) {
+    const extra = [
+      ['params.json', (o) => [...checkParams(o), ...checkWords(o, 'params')]],
+      ['love.json', (o) => [...checkLove(o), ...checkWords(o, 'love')]],
+    ];
+    for (const [f, fn] of extra) {
+      const file = path.resolve('content', f);
+      if (!fs.existsSync(file)) continue;
+      const errors = fn(JSON.parse(fs.readFileSync(file, 'utf8')));
+      if (errors.length) {
+        bad++;
+        console.log(`✗ ${f}\n  - ${errors.join('\n  - ')}`);
+      } else {
+        console.log(`✓ ${f}`);
+      }
     }
   }
   process.exit(bad ? 1 : 0);

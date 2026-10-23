@@ -1,10 +1,16 @@
 // POST /api/event {k, v} — 診断開始・完了・シェア・流入を数えるだけ。個人を識別する情報は受け取らない。
-const SHARE = ['x', 'line', 'link', 'native', 'image', 'label-image', 'gold-image', 'pair-image', 'invite'];
+const SHARE = [
+  'x', 'line', 'link', 'native', 'invite', 'quiz',
+  'image', 'label-image', 'gold-image', 'pair-image', 'nick-image', 'status-image', 'prof-image',
+];
 const ALLOWED = {
   start: () => '',
   done: (v) => (/^(\d|1\d)$/.test(v) ? v : null),
   share: (v) => (SHARE.includes(v) ? v : null),
   ref: () => '',
+  detail: (v) => (['start', 'done'].includes(v) ? v : null),
+  paywall: (v) => (['view', 'cta', 'ask'].includes(v) ? v : null),
+  quiz: (v) => (['create', 'answer', 'done'].includes(v) ? v : null),
   group: (v) => (['create', 'join'].includes(v) ? v : null),
   // 支払い完了とコード利用はサーバー側（unlock / redeem）で数える
   premium: (v) => (v === 'checkout' ? v : null),

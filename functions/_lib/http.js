@@ -26,5 +26,5 @@ export async function rateLimited(env, request, name, limitPerMinute) {
   return (row?.n ?? 0) > limitPerMinute;
 }
 
-// 結果コード（site/assets/logic.js の encodeResult と同じ形）
-export const RESULT_CODE = /^[0-9a-j]~-?\d{1,2}_-?\d{1,2}_-?\d{1,2}_-?\d{1,2}$/;
+// 結果コード（site/assets/logic.js の encodeResult と同じ形。くわしい診断はパラメータ6桁つき）
+export const RESULT_CODE = /^[0-9a-j]~-?\d_-?\d_-?\d_-?\d(?:~[0-9a-c]{6})?$/;

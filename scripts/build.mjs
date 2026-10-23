@@ -1,6 +1,7 @@
 // site/ を dist/ にコピーし、URLを貼ったときにOGP画像が出るよう静的な着地ページを作る。
 //   /t/NN/  タイプ別ページ（結果のシェアURL）
 //   /i/NN/  相性診断のおさそい（送った人のタイプのOGP）
+//   /k/NN/  わたしクイズ（出題者のタイプのOGP）
 //   /p/     ふたりの相性
 //   /g/     グループ診断
 //   /thanks/ 完全版の購入後に戻ってくるページ
@@ -39,7 +40,7 @@ function page(dir, m, { type = '', kind = '' } = {}) {
   fs.writeFileSync(path.join(dist, dir, 'index.html'), html);
 }
 
-const topDescription = '20問・約2分でわかる、あなたの“愛すべきポンコツ”タイプ。16タイプ＋隠し4タイプ。相性診断・グループ診断つき。';
+const topDescription = '12問・約1分でわかる、あなたの“愛すべきポンコツ”タイプ。16タイプ＋隠し4タイプ。くわしい診断で二つ名と恋愛タイプも。';
 page('', { title: `${SITE.quizName}｜${SITE.name}`, description: topDescription, image: `${origin}/og/top.png`, url: `${origin}/` });
 
 const urls = [`${origin}/`];
@@ -53,11 +54,18 @@ TYPES.forEach((t, i) => {
   }, { type: no });
   page(`i/${no}`, {
     title: `相性診断のおさそい｜${SITE.quizName}`,
-    description: `「${t.label}」の友達から、ふたりの相性診断が届いています。20問に答えると相性がわかります。`,
+    description: `「${t.label}」の友達から、ふたりの相性診断が届いています。12問に答えると相性がわかります。`,
     image: `${origin}/og/${no}.png`,
     url: `${origin}/i/${no}/`,
     noindex: true,
   }, { kind: 'invite' });
+  page(`k/${no}`, {
+    title: `わたしクイズ｜${SITE.quizName}`,
+    description: `「${t.label}」の友達から、わたしクイズが届いています。友達の答えを当てて、理解度をチェックしよう。`,
+    image: `${origin}/og/${no}.png`,
+    url: `${origin}/k/${no}/`,
+    noindex: true,
+  }, { kind: 'quiz' });
   if (i < BASE_COUNT) urls.push(`${origin}/t/${no}/`);
 });
 page('p', { title: `ふたりの相性｜${SITE.quizName}`, description: 'ふたりの相性は何％？ あなたも診断して、友達との相性をくらべよう。', image: `${origin}/og/pair.png`, url: `${origin}/p/`, noindex: true }, { kind: 'pair' });
@@ -72,9 +80,9 @@ fs.writeFileSync(
 );
 // 隠しタイプのページは検索に出さない（引き当てる楽しみを残す）
 const hiddenPaths = TYPES.map((_, i) => i).filter((i) => i >= BASE_COUNT).map((i) => `Disallow: /t/${typeNo(i).toLowerCase()}/`);
-fs.writeFileSync(path.join(dist, 'robots.txt'), `User-agent: *\n${hiddenPaths.join('\n')}\nDisallow: /i/\nDisallow: /p/\nDisallow: /g/\nDisallow: /thanks/\nSitemap: ${origin}/sitemap.xml\n`);
+fs.writeFileSync(path.join(dist, 'robots.txt'), `User-agent: *\n${hiddenPaths.join('\n')}\nDisallow: /i/\nDisallow: /k/\nDisallow: /p/\nDisallow: /g/\nDisallow: /thanks/\nSitemap: ${origin}/sitemap.xml\n`);
 fs.writeFileSync(
   path.join(dist, '_headers'),
   `/assets/*\n  Cache-Control: public, max-age=3600\n/og/*\n  Cache-Control: public, max-age=86400\n`,
 );
-console.log(`built ${TYPES.length} type pages + invite/pair/group/thanks pages into dist/`);
+console.log(`built ${TYPES.length} type pages + invite/quiz/pair/group/thanks pages into dist/`);

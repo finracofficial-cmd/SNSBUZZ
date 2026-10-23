@@ -1,18 +1,22 @@
 // ふたり・グループで遊ぶ機能：相性のおさそいリンク、ペア結果、グループ診断、出会ったタイプの記録
 import { SITE } from './config.js';
-import { TYPES, AXES, typeNo } from './data.js';
-import { compatOf, decodeResult, encodeResult, resultFromSums, axisPctOf } from './logic.js';
+import { TYPES, AXES, QUESTIONS, typeNo } from './data.js';
+import { compatOf, decodeResult, encodeResult, quickCodeOf, resultFromSums, axisPctOf } from './logic.js';
 import { charaSVG } from './chara.js';
 import { drawPairCard, canvasToBlob } from './card.js';
+import { optionOrder } from './quiz.js';
 import { app, ORIGIN, esc, cleanName, store, track, api, render, toast, openModal, closeModal, foot, brand, shareLinks, shareImageBlob } from './ui.js';
 
 // ---------- 出会ったタイプ（図鑑のコンプリート用） ----------
 export function addFriend(name, code) {
   const r = decodeResult(code);
   if (!r) return;
-  const friends = store.get('friends', []).filter((f) => !(f.name === name && f.code === code));
-  friends.unshift({ name, code, at: Date.now() });
-  store.set('friends', friends.slice(0, 60));
+  // 同じ人（同じ名前で、かんたん診断の結果も同じ）は1人にまとめる。くわしい診断のコードがあればそちらを残す
+  const same = (f) => f.name === name && quickCodeOf(f.code) === quickCodeOf(code);
+  const list = store.get('friends', []);
+  const old = list.find(same);
+  const keep = old && old.code.length > code.length ? old.code : code;
+  store.set('friends', [{ name, code: keep, at: Date.now() }, ...list.filter((f) => !same(f))].slice(0, 60));
 }
 export const friends = () =>
   store
@@ -236,7 +240,7 @@ export async function viewGroup(id) {
       ? `<div class="card"><h2>このグループに参加する</h2>
           <label class="field">ニックネーム<input id="join-name" maxlength="10" value="${esc(store.get('nick', ''))}" placeholder="例：ゆい"></label>
           <button class="btn" id="join">あなたのタイプで参加</button></div>`
-      : `<div class="card"><h2>診断して参加しよう</h2><p>20問に答えると、このグループに参加できます。</p>
+      : `<div class="card"><h2>診断して参加しよう</h2><p>かんたん診断（12問・約1分）に答えると、このグループに参加できます。</p>
           <button class="btn" data-go="#/q">診断する</button></div>`}
     ${members.length ? `
     <div class="card"><h2>メンバー</h2><div class="members">${members.map((m) => `
@@ -264,4 +268,204 @@ export async function viewGroup(id) {
       viewGroup(id);
     };
   }
+}
+
+
+// ---------- わたしクイズ（友達が、自分の答えを当てる） ----------
+// 本人のかんたん診断の答え12個をリンクに入れて送る。友達は5問＋タイプ当ての6問に答え、
+// 正解数（理解度）を本人に送り返せる。自由記述はなく、送り返すのはニックネームと点数だけ。
+const QUIZ_LEN = 5;
+
+function quizQuestions(answers) {
+  // 振り切った答え（±3）の質問を優先して、決まった順に5問選ぶ
+  return QUESTIONS.map((q, i) => ({ i, strong: Math.abs(q.options[answers[i]].v) === 3 }))
+    .sort((a, b) => Number(b.strong) - Number(a.strong) || a.i - b.i)
+    .slice(0, QUIZ_LEN)
+    .map((x) => x.i)
+    .sort((a, b) => a - b);
+}
+
+export function openQuizCreate(r) {
+  const answers = store.get('quickAnswers', null);
+  const mine = store.get('mineQuick', null);
+  if (!Array.isArray(answers) || answers.length !== QUESTIONS.length || !mine || quickCodeOf(encodeResult(r)) !== mine.code) {
+    openModal(`<h2 class="sheet-title">わたしクイズ</h2>
+      <p>クイズは、このスマホで診断した、いまの結果から作れます。もう一度かんたん診断をすると作れるようになります。</p>
+      <button class="btn" data-close data-go="#/q">かんたん診断をする</button>`);
+    return;
+  }
+  const sheet = openModal(`
+    <h2 class="sheet-title">わたしクイズを出す</h2>
+    <p>友達が、あなたの答えを当てるクイズ（6問）。友達の点数はあなたに届いて、「一番わかってる人」ランキングになります。</p>
+    <label class="field">あなたのニックネーム（友達に表示されます）
+      <input id="quiz-name" maxlength="10" placeholder="例：ゆい" value="${esc(store.get('nick', ''))}">
+    </label>
+    <div id="quiz-links"></div>
+    <button class="btn" id="quiz-make">クイズのリンクをつくる</button>
+    <button class="btn sub" data-close>とじる</button>`);
+  sheet.querySelector('#quiz-make').onclick = () => {
+    const name = cleanName(sheet.querySelector('#quiz-name').value) || '友達';
+    store.set('nick', name);
+    const params = new URLSearchParams({ f: mine.code, n: name, a: answers.join('') });
+    const url = `${ORIGIN}/k/${typeNo(mine.index).toLowerCase()}/?${params}`;
+    const text = `【わたしクイズ】${name}のこと、どれだけわかってる？ 全6問で理解度チェック #${SITE.hashtag}`;
+    sheet.querySelector('#quiz-links').innerHTML = `<p class="hint">このリンクを送ってね</p>${shareLinks({ text, url, channelPrefix: 'quiz:' }).html}`;
+    sheet.querySelector('#quiz-make').hidden = true;
+    track('quiz', 'create');
+  };
+}
+
+// /k/NN/?f=..&n=..&a=.. から来たとき
+export function receiveQuiz(params) {
+  const code = params.get('f');
+  const a = params.get('a') || '';
+  const r = decodeResult(code);
+  if (!r || !/^[0-3]{12}$/.test(a)) return false;
+  store.set('friendQuiz', { name: cleanName(params.get('n')) || '友達', code, a });
+  track('ref', '1');
+  return true;
+}
+
+let fq = null;
+
+export function viewFriendQuiz() {
+  const q = store.get('friendQuiz', null);
+  const owner = q && decodeResult(q.code);
+  if (!owner) {
+    location.hash = '#/';
+    return;
+  }
+  const answers = Array.from(q.a, Number);
+  fq = { ...q, owner, answers, order: quizQuestions(answers), pos: -1, score: 0, me: store.get('nick', '') };
+  render(`
+    ${brand()}
+    <section class="result">
+      <p class="lead">わたしクイズ</p>
+      <h1 class="label">${esc(q.name)}さんのこと、<br>どれだけわかってる？</h1>
+      <p>${esc(q.name)}さんが診断でどう答えたかを当ててね。全6問（5問＋タイプ当て）。</p>
+      <label class="field">あなたのニックネーム（${esc(q.name)}さんに届きます）
+        <input id="fq-name" maxlength="10" value="${esc(fq.me)}" placeholder="例：みお"></label>
+      <button class="btn" data-fq-start>はじめる</button>
+    </section>
+    ${foot()}`);
+  app.querySelector('[data-fq-start]').onclick = () => {
+    fq.me = cleanName(app.querySelector('#fq-name').value) || 'ななし';
+    store.set('nick', fq.me);
+    nextFriendQuestion();
+  };
+}
+
+function nextFriendQuestion() {
+  fq.pos++;
+  const total = QUIZ_LEN + 1;
+  if (fq.pos < QUIZ_LEN) {
+    const qi = fq.order[fq.pos];
+    const q = QUESTIONS[qi];
+    render(`
+      <div class="progress" aria-hidden="true"><i style="width:${(fq.pos / total) * 100}%"></i></div>
+      <div class="qhead"><span>わたしクイズ　${fq.pos + 1} / ${total}</span></div>
+      <p class="lead">${esc(fq.name)}さんは、どれを選んだ？</p>
+      <h2 class="qtext">${esc(q.text)}</h2>
+      <div class="opts">${optionOrder('axis', qi).map((j) => `<button class="opt" data-fq="${j}">${esc(q.options[j].text)}</button>`).join('')}</div>`);
+    app.querySelectorAll('[data-fq]').forEach((b) =>
+      b.addEventListener('click', () => answerFriend(Number(b.dataset.fq) === fq.answers[qi], b, `[data-fq="${fq.answers[qi]}"]`)),
+    );
+    return;
+  }
+  if (fq.pos === QUIZ_LEN) {
+    // タイプ当て：正解＋軸が1つだけちがう3タイプ
+    const base = fq.owner.baseIndex;
+    const near = [8, 4, 2, 1].map((b) => base ^ b);
+    const choices = [fq.owner.index, ...near.slice(0, 3)].sort((x, y) => ((x * 7 + base) % 11) - ((y * 7 + base) % 11));
+    render(`
+      <div class="progress" aria-hidden="true"><i style="width:${(fq.pos / total) * 100}%"></i></div>
+      <div class="qhead"><span>わたしクイズ　${total} / ${total}</span></div>
+      <p class="lead">ラスト！</p>
+      <h2 class="qtext">${esc(fq.name)}さんのタイプはどれ？</h2>
+      <div class="type-choices">${choices.map((i) => `<button class="opt type-opt" data-ft="${i}">${charaSVG(i, { size: 64 })}<span>${esc(TYPES[i].label)}</span></button>`).join('')}</div>`);
+    app.querySelectorAll('[data-ft]').forEach((b) =>
+      b.addEventListener('click', () => answerFriend(Number(b.dataset.ft) === fq.owner.index, b, `[data-ft="${fq.owner.index}"]`)),
+    );
+    return;
+  }
+  friendQuizResult();
+}
+
+function answerFriend(correct, button, correctSel) {
+  app.querySelectorAll('.opt').forEach((b) => (b.disabled = true));
+  if (correct) fq.score++;
+  button.classList.add(correct ? 'right' : 'wrong');
+  app.querySelector(correctSel)?.classList.add('right');
+  track('quiz', 'answer');
+  toast(correct ? '正解！' : 'ざんねん…');
+  setTimeout(nextFriendQuestion, 900);
+}
+
+const QUIZ_RANKS = [
+  [6, '大親友', '全問正解！ もはや本人より本人にくわしい。'],
+  [5, '親友', 'ほとんどお見通し。いつもちゃんと見てくれてる証拠。'],
+  [3, '友達', 'いいところまでわかってる。これからもっと仲良くなれる。'],
+  [0, 'これから仲良く', 'まだ知らない一面があるみたい。それも楽しみのうち。'],
+];
+const quizRank = (score) => QUIZ_RANKS.find(([min]) => score >= min);
+
+function friendQuizResult() {
+  const total = QUIZ_LEN + 1;
+  const [, rank, comment] = quizRank(fq.score);
+  const t = TYPES[fq.owner.index];
+  const back = `${ORIGIN}/#/qs/${encodeURIComponent(fq.me)}/${fq.score}`;
+  track('quiz', 'done');
+  addFriend(fq.name, fq.code);
+  render(`
+    ${brand()}
+    <section class="result">
+      <p class="lead">${esc(fq.name)}さんのわたしクイズ</p>
+      <div class="quiz-score"><strong>${fq.score}</strong><span>/ ${total}問</span></div>
+      <span class="chip">理解度：${esc(rank)}</span>
+      <p class="praise">${esc(comment)}</p>
+      <div class="card"><h2>${esc(fq.name)}さんのタイプ</h2>
+        <div class="mini-type">${charaSVG(fq.owner.index, { size: 72 })}<div><b>${esc(t.label)}</b><small>${esc(t.catch)}</small></div></div></div>
+      <h2 class="sheet-title">${esc(fq.name)}さんに結果を送る</h2>
+      ${shareLinks({ text: `${fq.name}のわたしクイズ、${total}問中${fq.score}問正解だった（${rank}）`, url: back, channelPrefix: 'quiz:' }).html}
+      <button class="btn type" data-fq-invite>自分も診断して、${esc(fq.name)}さんとの相性を見る</button>
+    </section>
+    ${foot()}`);
+  app.querySelector('[data-fq-invite]').onclick = () => {
+    store.set('invite', { name: fq.name, code: fq.code });
+    location.hash = '#/q';
+  };
+}
+
+// 友達から届いた点数（本人の端末にだけ記録する）
+export function receiveQuizScore(name, score) {
+  const n = cleanName(decodeURIComponent(name || '')) || 'ななし';
+  const sc = Number(score);
+  if (!Number.isInteger(sc) || sc < 0 || sc > QUIZ_LEN + 1) return false;
+  const list = store.get('quizScores', []).filter((x) => x.name !== n);
+  list.push({ name: n, score: sc, at: Date.now() });
+  store.set('quizScores', list.slice(-50));
+  return true;
+}
+
+export function viewQuizBoard() {
+  const list = [...store.get('quizScores', [])].sort((a, b) => b.score - a.score || a.at - b.at);
+  render(`
+    ${brand()}
+    <section class="result">
+      <p class="lead">わたしクイズの成績表</p>
+      <h1 class="label">一番わかってるのは！？</h1>
+    </section>
+    ${list.length
+      ? `<ol class="board">${list.map((x, k) => `<li><span class="bn">${k + 1}</span><b>${esc(x.name)}</b><span class="chip soft">${esc(quizRank(x.score)[1])}</span><strong>${x.score}/${QUIZ_LEN + 1}</strong>
+          <button class="linkish" data-del="${esc(x.name)}" aria-label="${esc(x.name)}を消す">消す</button></li>`).join('')}</ol>`
+      : '<p class="hint center">まだ届いていません。わたしクイズのリンクを送ってみてね。</p>'}
+    <p class="hint center">成績は、このスマホの中にだけ保存されています。</p>
+    <button class="btn sub" data-go="#/">トップへ</button>
+    ${foot()}`);
+  app.querySelectorAll('[data-del]').forEach((b) =>
+    b.addEventListener('click', () => {
+      store.set('quizScores', store.get('quizScores', []).filter((x) => x.name !== b.dataset.del));
+      viewQuizBoard();
+    }),
+  );
 }

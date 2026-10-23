@@ -1,18 +1,32 @@
-// 入口：ホーム・質問・ルーティング。結果やペア・グループの画面は別モジュール。
+// 入口：ホーム・ルーティング。質問・結果・レポート・ふたり/グループ・完全版は別モジュール。
 import { SITE } from './config.js';
-import { TYPES, QUESTIONS, HIDDEN, indexFromNo, isHidden } from './data.js';
-import { judge, encodeResult, decodeResult } from './logic.js';
+import { TYPES, HIDDEN, QUESTIONS, PARAM_QUESTIONS, indexFromNo } from './data.js';
+import { decodeResult } from './logic.js';
 import { charaSVG } from './chara.js';
-import { app, esc, store, track, loadStats, render, toast, foot, brand, handleShareClick, closeModal } from './ui.js';
+import { app, esc, store, track, render, foot, brand, toast, handleShareClick, closeModal } from './ui.js';
+import { startQuiz, handleQuizClick, cancelQuiz, savedQuickAnswers } from './quiz.js';
 import { viewResult, viewType, viewZukan } from './result.js';
-import { receiveInvite, inviteBanner, viewPair, viewGroup, openGroupCreate, addFriend } from './social.js';
-import { completePurchase } from './premium.js';
+import { viewReport } from './report.js';
+import {
+  receiveInvite,
+  inviteBanner,
+  viewPair,
+  viewGroup,
+  openGroupCreate,
+  addFriend,
+  receiveQuiz,
+  viewFriendQuiz,
+  receiveQuizScore,
+  viewQuizBoard,
+} from './social.js';
+import { completePurchase, viewBuyFor, acceptToken, maybeShowAfterPurchase, watchClaim } from './premium.js';
 
 // ---------- ホーム ----------
 function viewHome() {
   const parade = [3, 6, 8, 12, 10, 14, 7, 1].map((i) => charaSVG(i, { size: 100 })).join('');
   const mine = store.get('mine', null);
   const pendingGroup = store.get('pendingGroup', null);
+  const canContinue = !!savedQuickAnswers() && !store.get('mineDetail', null);
   render(`
     ${inviteBanner()}
     ${pendingGroup ? '<div class="invite"><div>グループ診断に参加するには、まず診断してね</div></div>' : ''}
@@ -20,17 +34,21 @@ function viewHome() {
       <h1><small>${esc(SITE.name)}</small>${esc(SITE.quizName)}</h1>
       <p class="catch">${esc(SITE.catchCopy)}</p>
       <div class="parade" aria-hidden="true">${parade}</div>
-      <button class="btn" data-go="#/q">診断する（20問・約2分）</button>
-      <div class="meta-row"><span class="pill">16タイプ＋隠し${HIDDEN.length}タイプ</span><span class="pill">相性診断つき</span><span class="pill">登録なし・無料</span></div>
+      <button class="btn" data-go="#/q">かんたん診断（${QUESTIONS.length}問・約1分）</button>
+      <button class="btn type" data-go="#/d">${canContinue
+        ? `くわしい診断の続き（あと${PARAM_QUESTIONS.length}問）`
+        : `くわしい診断（${QUESTIONS.length + PARAM_QUESTIONS.length}問・約4分）`}</button>
+      <p class="hint center">くわしい診断では、二つ名・恋愛タイプ・10項目のステータスまでわかります</p>
+      <div class="meta-row"><span class="pill">16タイプ＋隠し${HIDDEN.length}タイプ</span><span class="pill">二つ名240通り</span><span class="pill">登録なし・無料</span></div>
     </section>
     ${mine && TYPES[mine.index] && mine.code ? `<a class="card mini-result" href="#/r/${esc(mine.code)}/${esc(mine.shareId)}">
       ${charaSVG(mine.index, { size: 64 })}<div><small>前回のあなた</small><b>${esc(TYPES[mine.index].label)}</b></div><span>結果を見る →</span></a>` : ''}
     <section class="card features">
       <h2>できること</h2>
       <ul>
-        <li><b>16タイプ＋隠し${HIDDEN.length}タイプ</b>　性格・恋愛・友達・学校・トリセツまでまるごと解説</li>
-        <li><b>成分表とポンコツ純度</b>　同じタイプでも、人によって数字がちがう</li>
-        <li><b>ふたりの相性</b>　リンクを送って、友達や好きな人と相性チェック</li>
+        <li><b>16タイプ＋隠し${HIDDEN.length}タイプ</b>　性格・恋愛・友達・学校・トリセツまで解説</li>
+        <li><b>二つ名とステータス</b>　「ヤキモチ焼きの既読スルー職人」みたいな、あなただけの肩書き</li>
+        <li><b>ふたりの相性・わたしクイズ</b>　友達や好きな人と遊べる</li>
         <li><b>グループ診断</b>　クラスや部活の役割分担（幹事役・癒し担当…）がわかる</li>
       </ul>
     </section>
@@ -41,67 +59,8 @@ function viewHome() {
     <button class="btn sub" data-group-create>グループ診断をつくる</button>
     ${foot()}`);
   app.querySelector('[data-group-create]').addEventListener('click', openGroupCreate);
-}
-
-// ---------- 質問 ----------
-// 選択肢の並びが「弱い→強い」の順に見えないよう、質問ごとに固定の順でシャッフルする
-const ORDER = QUESTIONS.map((q, i) => {
-  const idx = q.options.map((_, j) => j);
-  let seed = i * 7919 + 17;
-  for (let j = idx.length - 1; j > 0; j--) {
-    seed = (seed * 48271) % 2147483647;
-    const k = seed % (j + 1);
-    [idx[j], idx[k]] = [idx[k], idx[j]];
-  }
-  return idx;
-});
-
-const CHEERS = { 5: 'いい調子！', 10: 'あと半分！', 15: 'あと5問！', 19: 'ラスト1問！' };
-let answers = [];
-
-function viewQuestion() {
-  const i = answers.length;
-  const q = QUESTIONS[i];
-  const opts = ORDER[i].map((j) => `<button class="opt" data-choice="${j}">${esc(q.options[j].text)}</button>`).join('');
-  render(`
-    <div class="progress" aria-hidden="true"><i style="width:${(i / QUESTIONS.length) * 100}%"></i></div>
-    <div class="qhead"><span>Q${i + 1} / ${QUESTIONS.length}</span>${i > 0 ? '<button data-back>← もどる</button>' : '<a href="#/">やめる</a>'}</div>
-    <h2 class="qtext">${esc(q.text)}</h2>
-    <div class="opts">${opts}</div>`);
-  if (CHEERS[i]) toast(CHEERS[i]);
-}
-
-function choose(choice, button) {
-  button.classList.add('on');
-  app.querySelectorAll('.opt').forEach((b) => (b.disabled = true));
-  setTimeout(() => {
-    answers.push(choice);
-    if (answers.length < QUESTIONS.length) viewQuestion();
-    else finish();
-  }, 160);
-}
-
-function finish() {
-  const r = judge(answers);
-  answers = [];
-  const code = encodeResult(r);
-  const shareId = Math.random().toString(36).slice(2, 8);
-  track('done', r.index);
-  store.set('mine', { index: r.index, code, shareId });
-  if (isHidden(r.index)) store.set('gotHidden', [...new Set([...store.get('gotHidden', []), r.index])]);
-  loadStats();
-  // 成分を分析しているふうの演出（4本のバーが伸びる）
-  render(`<div class="loading">ポンコツ成分を分析中…
-    <div class="analyzing">${r.axisPct.map((p, k) => `<div><i style="--w:${p}%;animation-delay:${k * 0.18}s"></i></div>`).join('')}</div></div>`);
-  const pendingGroup = store.get('pendingGroup', null);
-  setTimeout(() => {
-    if (pendingGroup) {
-      store.set('pendingGroup', null);
-      location.hash = `#/g/${pendingGroup.id}`;
-    } else {
-      location.hash = `#/r/${code}/${shareId}`;
-    }
-  }, 1500);
+  watchClaim(() => location.reload());
+  maybeShowAfterPurchase();
 }
 
 // ---------- 説明・法定表記 ----------
@@ -109,9 +68,9 @@ function viewAbout() {
   render(`
     ${brand()}
     <div class="card"><h2>このサイトについて</h2>
-      <p>${esc(SITE.quizName)}は、20問の答えから“愛すべきポンコツ”タイプを16種類（＋隠しタイプ${HIDDEN.length}種類）に分けるエンタメ診断です。心理学的な検査ではありません。</p>
-      <p>回答や個人を特定する情報は集めていません。集計しているのは、診断結果のタイプとシェアの回数だけです（レア度の表示に使います）。</p>
-      <p>相性のおさそいリンクには、あなたが入れたニックネームと診断結果だけが入ります。グループ診断では、ニックネームとタイプをグループのページに表示します。グループは作成から90日で見られなくなります。</p>
+      <p>${esc(SITE.quizName)}は、かんたん診断（${QUESTIONS.length}問）で“愛すべきポンコツ”タイプを16種類（＋隠しタイプ${HIDDEN.length}種類）に分け、くわしい診断（＋${PARAM_QUESTIONS.length}問）で二つ名・恋愛タイプ・ステータスを出すエンタメの心理テストです。心理学的な検査や占いではありません。</p>
+      <p>回答や個人を特定する情報は集めていません。集計しているのは、診断結果のタイプとボタンが押された回数だけです（レア度の表示に使います）。</p>
+      <p>相性のおさそいリンクやわたしクイズのリンクには、あなたが入れたニックネームと診断結果（クイズは答えの番号）だけが入ります。グループ診断では、ニックネームとタイプをグループのページに表示します。グループは作成から90日で見られなくなります。</p>
       <p>結果画像のスクリーンショット、動画での紹介、配信での利用は自由です。</p>
     </div>
     ${foot()}`);
@@ -126,51 +85,63 @@ function viewLegal() {
         <dt>販売事業者</dt><dd>${esc(s.name)}</dd>
         <dt>所在地・電話番号</dt><dd>${esc(s.address)}</dd>
         <dt>お問い合わせ</dt><dd>${esc(s.contact)}</dd>
-        <dt>販売価格</dt><dd>完全版トリセツ ${SITE.premiumPrice}円（税込）</dd>
+        <dt>販売価格</dt><dd>完全版（じぶん用）${SITE.premiumPrice}円（税込）。ふたり用を販売する場合は購入画面に表示する価格（税込）</dd>
         <dt>商品代金以外の費用</dt><dd>インターネット接続にかかる通信料</dd>
-        <dt>支払方法</dt><dd>クレジットカード、Apple Pay、Google Pay（決済サービス Stripe）</dd>
+        <dt>支払方法</dt><dd>クレジットカード、Apple Pay、Google Pay、PayPayなど（決済サービス Stripe で表示されるもの）</dd>
         <dt>支払時期</dt><dd>ご注文時に決済されます</dd>
         <dt>提供時期</dt><dd>決済完了後、すぐにご利用いただけます</dd>
-        <dt>返品・キャンセル</dt><dd>デジタルコンテンツの性質上、購入後の返品・キャンセルはできません</dd>
-        <dt>動作環境</dt><dd>最新版の Safari・Chrome。購入情報はご利用の端末のブラウザに保存されます</dd>
+        <dt>返品・キャンセル</dt><dd>デジタルコンテンツの性質上、購入後の返品・キャンセルはできません。18歳未満の方の購入で保護者からお申し出があった場合は、全額返金します</dd>
+        <dt>動作環境</dt><dd>最新版の Safari・Chrome。購入情報はご利用の端末のブラウザに保存されます（引き継ぎリンクでほかの端末でも読めます）</dd>
       </dl>
-      <p class="hint">18歳未満の方は、保護者の同意を得てからご購入ください。</p>
+      <p class="hint">18歳未満の方は、保護者の同意を得てからご購入ください。おうちの人のスマホから支払ってもらうこともできます。</p>
     </div>
     ${foot()}`);
+}
+
+function viewBuyDone() {
+  render(`${brand()}<section class="card"><h1 class="sheet-title">お支払いが完了しました</h1>
+    <p>お子さまのスマホで、完全版が自動的に開きます。開かないときは、下の案内の「引き継ぎリンク」を送ってください。</p></section>${foot()}`);
+  maybeShowAfterPurchase();
 }
 
 // ---------- ルーティング ----------
 async function route() {
   closeModal();
+  cancelQuiz();
   const page = document.body.dataset.page;
   const hash = location.hash || (document.body.dataset.type ? `#/t/${document.body.dataset.type}` : '#/');
   const [, view, a, b, c, d] = hash.split('/');
-  if (view === 'q') {
-    answers = [];
-    track('start');
-    viewQuestion();
-  } else if (view === 'r') {
+  if (view === 'q') startQuiz('quick');
+  else if (view === 'd') startQuiz('detail');
+  else if (view === 'r') {
     const r = decodeResult(a);
-    if (r) viewResult(r, b || 'x');
-    else viewHome();
+    if (!r) viewHome();
+    else if (r.mode === 'detail') viewReport(r, b || 'x');
+    else viewResult(r, b || 'x');
   } else if (view === 't') {
     const index = indexFromNo(a);
     if (index < 0 || !viewType(index)) viewZukan();
-  } else if (view === 'zukan') {
-    viewZukan();
-  } else if (view === 'pair') {
-    viewPair(a, b, decodeURIComponent(c || ''), decodeURIComponent(d || ''));
-  } else if (view === 'g') {
-    viewGroup(a);
-  } else if (view === 'about') {
-    viewAbout();
-  } else if (view === 'legal') {
-    viewLegal();
-  } else if (!location.hash && page === 'thanks') {
-    location.replace(await completePurchase(new URLSearchParams(location.search).get('sid') || ''));
-  } else {
-    viewHome();
-  }
+  } else if (view === 'zukan') viewZukan();
+  else if (view === 'pair') viewPair(a, b, decodeURIComponent(c || ''), decodeURIComponent(d || ''));
+  else if (view === 'g') viewGroup(a);
+  else if (view === 'fq') viewFriendQuiz();
+  else if (view === 'qs') {
+    if (receiveQuizScore(a, b)) toast('クイズの結果が届きました');
+    history.replaceState(null, '', `${location.pathname}#/qboard`);
+    viewQuizBoard();
+  } else if (view === 'qboard') viewQuizBoard();
+  else if (view === 'buy' && a === 'done') viewBuyDone();
+  else if (view === 'buy' && /^[a-z0-9]{16}$/.test(a || '')) viewBuyFor(a, render);
+  else if (view === 'unlock') {
+    const ok = await acceptToken(decodeURIComponent(a || ''));
+    toast(ok ? '完全版が開きました' : 'リンクを確認できませんでした');
+    const mine = store.get('mine', null);
+    history.replaceState(null, '', `${location.pathname}${mine?.code ? `#/r/${mine.code}/${mine.shareId}` : '#/'}`);
+    route();
+  } else if (view === 'about') viewAbout();
+  else if (view === 'legal') viewLegal();
+  else if (!location.hash && page === 'thanks') location.replace(await completePurchase(new URLSearchParams(location.search).get('sid') || ''));
+  else viewHome();
 }
 
 function delegate(e) {
@@ -189,28 +160,22 @@ function delegate(e) {
 }
 
 app.addEventListener('click', (e) => {
-  const opt = e.target.closest('[data-choice]');
-  if (opt) {
-    choose(Number(opt.dataset.choice), opt);
-    return;
-  }
-  if (e.target.closest('[data-back]')) {
-    answers.pop();
-    viewQuestion();
-    return;
-  }
+  if (handleQuizClick(e)) return;
   delegate(e);
 });
 // モーダルの中のボタン（共有・画面遷移）も同じ扱いにする
 document.getElementById('modal').addEventListener('click', delegate);
 
-// 静的な着地ページ（/i/ /p/ /g/）から来たときの初期化
+// 静的な着地ページ（/i/ /k/ /p/ /g/）から来たときの初期化
 (function boot() {
   const params = new URLSearchParams(location.search);
   const page = document.body.dataset.page;
   if (params.has('s')) track('ref', '1');
   if (page === 'invite' && !location.hash && receiveInvite(params)) {
     history.replaceState(null, '', `${location.pathname}#/`);
+  }
+  if (page === 'quiz' && !location.hash && receiveQuiz(params)) {
+    history.replaceState(null, '', `${location.pathname}#/fq`);
   }
   if (page === 'pair' && !location.hash && params.get('a') && params.get('b')) {
     addFriend(params.get('na') || '友達', params.get('a'));

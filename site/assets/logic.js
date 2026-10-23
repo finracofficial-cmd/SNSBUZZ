@@ -1,41 +1,67 @@
 // 判定・相性・レア度のロジック。DOMに依存しないので Node のテストからもそのまま読み込める。
-import { AXES, QUESTIONS, HIDDEN, BASE_COUNT, BALANCED_MAX_TOTAL, AXIS_MAX, TYPES } from './data.js';
+import {
+  AXES,
+  QUESTIONS,
+  HIDDEN,
+  BASE_COUNT,
+  BALANCED,
+  AXIS_MAX,
+  TYPES,
+  PARAMS,
+  PARAM_QUESTIONS,
+  PARAM_MAX,
+  loveIndexOf,
+} from './data.js';
 
 const TAGS = [...new Set(QUESTIONS.flatMap((q) => q.options.map((o) => o.tag).filter(Boolean)))];
 export const TAG_COUNTS = Object.fromEntries(
   TAGS.map((tag) => [tag, QUESTIONS.filter((q) => q.options.some((o) => o.tag === tag)).length]),
 );
 
-const bitsOf = (sums) => sums.map((s) => (s > 0 ? 1 : 0));
-export const baseIndexOf = (sums) => bitsOf(sums).reduce((n, b) => n * 2 + b, 0);
+export const baseIndexOf = (sums) => sums.reduce((n, s) => n * 2 + (s > 0 ? 1 : 0), 0);
 export const bitsOfIndex = (index) => [3, 2, 1, 0].map((s) => (index >> s) & 1);
+const isBalanced = (absTotal, big) => absTotal <= BALANCED.total && big <= BALANCED.big;
 
-function hiddenOf(sums, hits) {
+function hiddenOf(sums, hits, big) {
   for (const h of HIDDEN) {
-    if (h.kind === 'balanced' && sums.reduce((a, s) => a + Math.abs(s), 0) <= BALANCED_MAX_TOTAL) return h.index;
+    if (h.kind === 'balanced' && isBalanced(sums.reduce((a, s) => a + Math.abs(s), 0), big)) return h.index;
     if (h.kind === 'tag' && hits[h.tag] === TAG_COUNTS[h.tag]) return h.index;
   }
   return null;
 }
 
-// answers[i] = QUESTIONS[i] で選んだ選択肢の番号
-export function judge(answers) {
-  if (answers.length !== QUESTIONS.length) throw new Error('answers length mismatch');
+// axis: 軸の12問の答え（選んだ選択肢の番号の配列）
+// param: くわしい診断のパラメータ24問の答え（あれば）
+export function judge({ axis, param = null }) {
+  if (!Array.isArray(axis) || axis.length !== QUESTIONS.length) throw new Error('axis answers length mismatch');
   const sums = AXES.map(() => 0);
   const hits = Object.fromEntries(TAGS.map((t) => [t, 0]));
-  answers.forEach((choice, i) => {
+  let big = 0;
+  axis.forEach((choice, i) => {
     const opt = QUESTIONS[i].options[choice];
-    if (!opt) throw new Error(`invalid choice ${choice} for question ${i}`);
+    if (!opt) throw new Error(`invalid choice for question ${i}`);
     sums[QUESTIONS[i].axis] += opt.v;
     if (opt.tag) hits[opt.tag]++;
+    if (Math.abs(opt.v) === 3) big++;
   });
-  return resultFromSums(sums, hiddenOf(sums, hits));
+  let paramRaw = null;
+  if (param) {
+    if (!Array.isArray(param) || param.length !== PARAM_QUESTIONS.length) throw new Error('param answers length mismatch');
+    paramRaw = PARAMS.map(() => 0);
+    param.forEach((choice, i) => {
+      const opt = PARAM_QUESTIONS[i].options[choice];
+      if (!opt) throw new Error(`invalid choice for param question ${i}`);
+      paramRaw[PARAM_QUESTIONS[i].param] += opt.v;
+    });
+  }
+  return resultFromSums(sums, hiddenOf(sums, hits, big), paramRaw);
 }
 
-// URLなどに保存した sums から結果を組み立て直す（隠しタイプは index で渡す）
-export function resultFromSums(sums, hiddenIndex = null) {
+// URLなどに保存した値から結果を組み立て直す（隠しタイプは index で渡す）
+export function resultFromSums(sums, hiddenIndex = null, paramRaw = null) {
   const baseIndex = baseIndexOf(sums);
-  return {
+  const r = {
+    mode: paramRaw ? 'detail' : 'quick',
     index: hiddenIndex ?? baseIndex,
     baseIndex,
     hidden: hiddenIndex != null,
@@ -44,6 +70,13 @@ export function resultFromSums(sums, hiddenIndex = null) {
     axisPct: sums.map(axisPctOf),
     ura: uraOf(sums),
   };
+  if (paramRaw) {
+    r.paramRaw = paramRaw;
+    r.params = paramRaw.map((v) => Math.round((v / PARAM_MAX) * 100));
+    r.nickname = nicknameOf(r.params, baseIndex);
+    r.love = loveIndexOf(r.params);
+  }
+  return r;
 }
 
 export const axisPctOf = (s) => Math.round(50 + (Math.abs(s) / AXIS_MAX) * 50);
@@ -70,6 +103,28 @@ export function uraOf(sums) {
   return { index: baseIndexOf(sums) ^ (1 << (3 - weakest)), axis: weakest };
 }
 
+// ---------- くわしい診断：パラメータ・二つ名・恋愛タイプ ----------
+// 0〜33% が低め、34〜66% がふつう、67% 以上が高め
+export const paramLevel = (pct) => (pct <= 33 ? 0 : pct <= 66 ? 1 : 2);
+export const LEVEL_NAMES = ['低め', 'ふつう', '高め'];
+// ゲーム風のランク表示（D〜S）
+export const rankOf = (pct) => (pct >= 85 ? 'S' : pct >= 67 ? 'A' : pct >= 42 ? 'B' : pct >= 25 ? 'C' : 'D');
+
+// 二つ名：50% からいちばん離れたパラメータの high / low。
+// 同点のときに同じパラメータばかり選ばれないよう、見る順番の起点をタイプごとにずらす
+export function nicknameOf(params, start = 0) {
+  const n = params.length;
+  let k = start % n;
+  for (let j = 1; j < n; j++) {
+    const i = (start + j) % n;
+    if (Math.abs(params[i] - 50) > Math.abs(params[k] - 50)) k = i;
+  }
+  const side = params[k] >= 50 ? 'high' : 'low';
+  return { param: k, side, text: PARAMS[k][side] };
+}
+
+export const fullName = (r) => (r.nickname ? `${r.nickname.text}${TYPES[r.index].label}` : TYPES[r.index].label);
+
 // ---------- 軸ごとの一言（振れ幅で3段階） ----------
 const AXIS_LINES = [
   {
@@ -91,7 +146,8 @@ const AXIS_LINES = [
 ];
 
 export function axisLine(axis, sum) {
-  const level = Math.abs(sum) >= 11 ? 2 : Math.abs(sum) >= 5 ? 1 : 0;
+  const f = Math.abs(sum) / AXIS_MAX;
+  const level = f >= 0.7 ? 2 : f >= 0.3 ? 1 : 0;
   return AXIS_LINES[axis][sum > 0 ? 'pos' : 'neg'][level];
 }
 
@@ -116,7 +172,7 @@ export function compat(aIndex, bIndex) {
   const sorted = [...parts].sort((x, y) => y[0] - x[0]);
   return {
     score,
-    rank: aIndex === bIndex ? '分身' : score >= 90 ? '運命の相方' : score >= 80 ? '名コンビ' : score >= 68 ? 'いい感じ' : '刺激しあう仲',
+    rank: aIndex === bIndex ? '分身' : score >= 90 ? '最強の相方' : score >= 80 ? '名コンビ' : score >= 68 ? 'いい感じ' : '刺激しあう仲',
     good: sorted[0][1],
     care: sorted[sorted.length - 1][0] <= 6 ? sorted[sorted.length - 1][1] : null,
   };
@@ -134,34 +190,35 @@ export function compatRanking(baseIndex) {
 // ---------- レア度 ----------
 // 全員がランダムに答えた場合の各タイプの出現率（理論値）。軸ごとに
 // 「向き・振れ幅・タグの選択数」の分布を出し、4軸を畳み込んでから隠しタイプを判定する。
-let priorCache;
+let priorCache = null;
 export function priorDistribution() {
   if (priorCache) return priorCache;
   const tagKey = (h) => TAGS.map((t) => h[t]).join(',');
-  let states = new Map([[`0|0|${TAGS.map(() => 0).join(',')}`, 1]]); // code|Σ|s||tagHits
+  // 状態キー: タイプ番号の途中値|Σ|s||±3の数|タグの選択数
+  let states = new Map([[`0|0|0|${TAGS.map(() => 0).join(',')}`, 1]]);
   AXES.forEach((_, axis) => {
     const qs = QUESTIONS.filter((q) => q.axis === axis);
     const local = new Map();
-    const walk = (k, sum, hits, p) => {
+    const walk = (k, sum, big, hits, p) => {
       if (k === qs.length) {
-        const key = `${sum}|${tagKey(hits)}`;
+        const key = `${sum}|${big}|${tagKey(hits)}`;
         local.set(key, (local.get(key) || 0) + p);
         return;
       }
       qs[k].options.forEach((o) => {
         const h = o.tag ? { ...hits, [o.tag]: hits[o.tag] + 1 } : hits;
-        walk(k + 1, sum + o.v, h, p / qs[k].options.length);
+        walk(k + 1, sum + o.v, big + (Math.abs(o.v) === 3 ? 1 : 0), h, p / qs[k].options.length);
       });
     };
-    walk(0, 0, Object.fromEntries(TAGS.map((t) => [t, 0])), 1);
+    walk(0, 0, 0, Object.fromEntries(TAGS.map((t) => [t, 0])), 1);
     const next = new Map();
     states.forEach((p, sKey) => {
-      const [code, abs, h] = sKey.split('|');
+      const [code, abs, big, h] = sKey.split('|');
       const hs = h.split(',').map(Number);
       local.forEach((lp, lKey) => {
-        const [sum, lh] = lKey.split('|');
+        const [sum, lb, lh] = lKey.split('|');
         const merged = lh.split(',').map((x, i) => Number(x) + hs[i]).join(',');
-        const key = `${Number(code) * 2 + (Number(sum) > 0 ? 1 : 0)}|${Number(abs) + Math.abs(Number(sum))}|${merged}`;
+        const key = `${Number(code) * 2 + (Number(sum) > 0 ? 1 : 0)}|${Number(abs) + Math.abs(Number(sum))}|${Number(big) + Number(lb)}|${merged}`;
         next.set(key, (next.get(key) || 0) + p * lp);
       });
     });
@@ -169,11 +226,11 @@ export function priorDistribution() {
   });
   const dist = new Array(TYPES.length).fill(0);
   states.forEach((p, key) => {
-    const [code, abs, h] = key.split('|');
+    const [code, abs, big, h] = key.split('|');
     const hits = Object.fromEntries(h.split(',').map((x, i) => [TAGS[i], Number(x)]));
     let index = Number(code);
     for (const hd of HIDDEN) {
-      if (hd.kind === 'balanced' && Number(abs) <= BALANCED_MAX_TOTAL) {
+      if (hd.kind === 'balanced' && isBalanced(Number(abs), Number(big))) {
         index = hd.index;
         break;
       }
@@ -199,17 +256,23 @@ export function rarityOf(index, stats) {
 }
 
 // ---------- URLに載せる結果の短い表現 ----------
-// 「タイプ番号.4軸の合計」を base36 で詰める。例: 6.-3_5_-7_1 → "6~-3_5_-7_1"
-export function encodeResult({ index, sums }) {
-  return `${index.toString(36)}~${sums.join('_')}`;
+// かんたん: 「番号~4軸の合計」 例: 6~-3_5_-7_1
+// くわしい: 「番号~4軸の合計~パラメータ6つ（各0〜12を36進数1文字）」 例: 6~-3_5_-7_1~37c928
+export function encodeResult(r) {
+  const head = `${r.index.toString(36)}~${r.sums.join('_')}`;
+  return r.paramRaw ? `${head}~${r.paramRaw.map((v) => v.toString(36)).join('')}` : head;
 }
 
 export function decodeResult(code) {
-  const m = /^([0-9a-j])~(-?\d{1,2})_(-?\d{1,2})_(-?\d{1,2})_(-?\d{1,2})$/.exec(String(code || ''));
+  const m = /^([0-9a-j])~(-?\d)_(-?\d)_(-?\d)_(-?\d)(?:~([0-9a-c]{6}))?$/.exec(String(code || ''));
   if (!m) return null;
   const index = parseInt(m[1], 36);
-  const sums = m.slice(2).map(Number);
+  const sums = m.slice(2, 6).map(Number);
+  const paramRaw = m[6] ? Array.from(m[6], (c) => parseInt(c, 36)) : null;
   if (index >= TYPES.length || sums.some((s) => Math.abs(s) > AXIS_MAX || s % 2 === 0)) return null;
-  const r = resultFromSums(sums, index >= BASE_COUNT ? index : null);
+  const r = resultFromSums(sums, index >= BASE_COUNT ? index : null, paramRaw);
   return r.index === index ? r : null;
 }
+
+// かんたん診断のコードに戻す（くわしい診断の結果から、タイプ部分だけを取り出す）
+export const quickCodeOf = (code) => String(code).split('~').slice(0, 2).join('~');

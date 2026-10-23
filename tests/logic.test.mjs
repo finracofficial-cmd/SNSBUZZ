@@ -1,6 +1,22 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { TYPES, QUESTIONS, AXES, HIDDEN, BASE_COUNT, AXIS_MAX, typeNo, indexFromNo } from '../site/assets/data.js';
+import {
+  TYPES,
+  QUESTIONS,
+  AXES,
+  HIDDEN,
+  BASE_COUNT,
+  AXIS_MAX,
+  PARAMS,
+  PARAM_QUESTIONS,
+  PARAM_MAX,
+  PARAM_TEXT,
+  LOVE_TYPES,
+  CHAPTERS,
+  typeNo,
+  indexFromNo,
+  loveIndexOf,
+} from '../site/assets/data.js';
 import {
   judge,
   priorDistribution,
@@ -11,29 +27,58 @@ import {
   uraOf,
   encodeResult,
   decodeResult,
+  quickCodeOf,
   axisLine,
+  nicknameOf,
+  paramLevel,
+  rankOf,
+  fullName,
   TAG_COUNTS,
 } from '../site/assets/logic.js';
 
-// 軸ごとに「この値の選択肢を選ぶ」を指定して回答を作る
-const answersFor = (pickByAxis, override = {}) =>
-  QUESTIONS.map((q, i) => {
-    if (override[i] !== undefined) return override[i];
-    return q.options.findIndex((o) => o.v === pickByAxis[q.axis] && !o.tag) === -1
-      ? q.options.findIndex((o) => o.v === pickByAxis[q.axis])
-      : q.options.findIndex((o) => o.v === pickByAxis[q.axis] && !o.tag);
+// 軸ごとに「この値の選択肢を選ぶ」を指定して回答を作る（タグなしの選択肢を優先）
+const pick = (q, v) => {
+  const plain = q.options.findIndex((o) => o.v === v && !o.tag);
+  return plain >= 0 ? plain : q.options.findIndex((o) => o.v === v);
+};
+const axisAnswers = (values, override = {}) => QUESTIONS.map((q, i) => override[i] ?? pick(q, values[q.axis]));
+const paramAnswers = (choices) => PARAM_QUESTIONS.map((q) => choices[q.param]);
+const tagOverride = (tag) => {
+  const o = {};
+  QUESTIONS.forEach((q, i) => {
+    const k = q.options.findIndex((x) => x.tag === tag);
+    if (k >= 0) o[i] = k;
   });
+  return o;
+};
 
-test('データの形がそろっている', () => {
-  assert.equal(TYPES.length, 20);
-  assert.equal(QUESTIONS.length, 20);
-  AXES.forEach((_, a) => assert.equal(QUESTIONS.filter((q) => q.axis === a).length, 5));
-  QUESTIONS.forEach((q) => {
-    assert.equal(q.options.length, 4);
-    assert.deepEqual(q.options.map((o) => o.v).sort((x, y) => x - y), [-3, -1, 1, 3]);
-  });
+test('質問セットの形：軸12問（各3問）、パラメータ24問（各4問・3章×8問）', () => {
+  assert.equal(QUESTIONS.length, 12);
+  AXES.forEach((_, a) => assert.equal(QUESTIONS.filter((q) => q.axis === a).length, 3));
+  QUESTIONS.forEach((q) => assert.deepEqual(q.options.map((o) => o.v).sort((x, y) => x - y), [-3, -1, 1, 3]));
   assert.deepEqual(TAG_COUNTS, { phone: 3, food: 3, money: 3 });
+  assert.equal(PARAM_QUESTIONS.length, 24);
+  PARAMS.forEach((_, k) => assert.equal(PARAM_QUESTIONS.filter((q) => q.param === k).length, 4));
+  CHAPTERS.forEach((_, c) => assert.equal(PARAM_QUESTIONS.filter((q) => q.chapter === c).length, 8));
+  PARAM_QUESTIONS.forEach((q) => assert.deepEqual(q.options.map((o) => o.v), [0, 1, 2, 3]));
+  // 章の中では同じ章のパラメータだけが出る
+  PARAM_QUESTIONS.forEach((q) => assert.ok([q.chapter * 2, q.chapter * 2 + 1].includes(q.param)));
+  assert.equal(PARAM_MAX, 12);
+});
+
+test('文言データがそろっている', () => {
+  assert.equal(TYPES.length, 20);
   TYPES.forEach((t, i) => assert.ok(TYPES[t.best], `相性先が存在しない: ${i}`));
+  assert.equal(PARAM_TEXT.length, PARAMS.length);
+  PARAM_TEXT.forEach((levels) => {
+    assert.equal(levels.length, 3);
+    levels.forEach((l) => assert.ok(l.lead.length > 10));
+  });
+  assert.equal(LOVE_TYPES.length, 8);
+  LOVE_TYPES.forEach((l, i) => {
+    assert.equal(l.best, i ^ 6);
+    assert.ok(l.name && l.catch && l.lead);
+  });
 });
 
 test('図鑑No.と番号の変換', () => {
@@ -48,63 +93,90 @@ test('図鑑No.と番号の変換', () => {
   assert.equal(indexFromNo('x'), -1);
 });
 
-test('16タイプすべてに到達でき、軸の合計に引き分けがない', () => {
+test('16タイプすべてに到達でき、引き分けがない。くわしい診断でタイプは変わらない', () => {
   for (let i = 0; i < BASE_COUNT; i++) {
-    const bits = [3, 2, 1, 0].map((s) => (i >> s) & 1);
-    const r = judge(answersFor(bits.map((b) => (b ? 3 : -3))));
-    assert.equal(r.index, i, TYPES[i].label);
-    r.sums.forEach((s) => assert.ok(s % 2 !== 0));
+    const v = [3, 2, 1, 0].map((s) => ((i >> s) & 1 ? 3 : -3));
+    const q = judge({ axis: axisAnswers(v) });
+    assert.equal(q.mode, 'quick');
+    assert.equal(q.index, i, TYPES[i].label);
+    q.sums.forEach((s) => assert.ok(s % 2 !== 0));
+    const d = judge({ axis: axisAnswers(v), param: paramAnswers([0, 1, 2, 3, 0, 1]) });
+    assert.equal(d.mode, 'detail');
+    assert.equal(d.index, q.index);
+    assert.deepEqual(d.sums, q.sums);
   }
 });
 
-test('隠しタイプの条件と優先順位', () => {
-  const tagAnswers = (tag) => {
-    const o = {};
-    QUESTIONS.forEach((q, i) => {
-      const k = q.options.findIndex((x) => x.tag === tag);
-      if (k >= 0) o[i] = k;
-    });
-    return o;
-  };
-  // 振り切った回答に、タグの選択肢だけを混ぜる
+test('隠しタイプ：タグは3つそろったときだけ、幻のしっかり者は真ん中寄りの人だけ', () => {
   const strong = [3, 3, -3, -3];
-  assert.equal(judge(answersFor(strong, tagAnswers('phone'))).index, 16);
-  assert.equal(judge(answersFor(strong, tagAnswers('money'))).index, 17);
-  assert.equal(judge(answersFor(strong, tagAnswers('food'))).index, 18);
-  // 1つ欠けたら隠しタイプにならない
-  const two = tagAnswers('phone');
-  delete two[Object.keys(two)[0]];
-  assert.ok(judge(answersFor(strong, two)).index < BASE_COUNT);
-  // 全軸の合計が±1 → 幻のしっかり者（タグより優先）
-  const pick = (q, v) => {
-    const plain = q.options.findIndex((o) => o.v === v && !o.tag);
-    return plain >= 0 ? plain : q.options.findIndex((o) => o.v === v);
-  };
+  for (const [tag, index] of [['phone', 16], ['money', 17], ['food', 18]]) {
+    assert.equal(judge({ axis: axisAnswers(strong, tagOverride(tag)) }).index, index, tag);
+    const two = tagOverride(tag);
+    delete two[Object.keys(two)[0]];
+    assert.ok(judge({ axis: axisAnswers(strong, two) }).index < BASE_COUNT);
+  }
+  // 各軸の合計が±1で、±3 の回答が少ない → 幻のしっかり者
   const seen = AXES.map(() => 0);
-  const balanced = QUESTIONS.map((q) => pick(q, [1, -1, 1, -1, 1][seen[q.axis]++]));
-  const r = judge(balanced);
-  assert.equal(r.index, 19);
-  assert.equal(r.sums.reduce((a, s) => a + Math.abs(s), 0) <= 4, true);
+  const moderate = QUESTIONS.map((q) => pick(q, [1, -1, 1][seen[q.axis]++]));
+  assert.equal(judge({ axis: moderate }).index, 19);
+  // 合計は±1でも、±3 の回答が多すぎると幻にならない
+  const seen2 = AXES.map(() => 0);
+  const extreme = QUESTIONS.map((q) => pick(q, [3, -3, 1][seen2[q.axis]++]));
+  const r = judge({ axis: extreme });
+  assert.ok(r.sums.every((s) => Math.abs(s) === 1));
+  assert.notEqual(r.index, 19);
 });
 
-test('理論分布は合計1で、無作為な回答のシミュレーションと一致する', () => {
-  const prior = priorDistribution();
-  assert.ok(Math.abs(prior.reduce((a, b) => a + b, 0) - 1) < 1e-9);
-  prior.forEach((p, i) => assert.ok(p > 0, `到達できない: ${TYPES[i].label}`));
-  // mulberry32（再現できる乱数）
-  let seed = 12345;
-  const rand = () => {
-    seed = (seed + 0x6d2b79f5) | 0;
-    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-  const n = 200000;
+test('理論分布は全4^12通りの総当たりと一致し、隠しタイプは基本タイプよりレアで、幻がいちばんレア', () => {
   const counts = new Array(TYPES.length).fill(0);
-  for (let k = 0; k < n; k++) counts[judge(QUESTIONS.map(() => Math.floor(rand() * 4))).index]++;
-  counts.forEach((c, i) => assert.ok(Math.abs(c / n - prior[i]) < 0.004, `${TYPES[i].label}: ${c / n} vs ${prior[i]}`));
-  // 隠しタイプはどれも基本タイプよりレア
-  HIDDEN.forEach((h) => assert.ok(prior[h.index] < Math.min(...prior.slice(0, BASE_COUNT))));
+  const axis = new Array(12).fill(0);
+  const total = 4 ** 12;
+  for (let n = 0; n < total; n++) {
+    let x = n;
+    for (let k = 0; k < 12; k++) {
+      axis[k] = x & 3;
+      x >>= 2;
+    }
+    counts[judge({ axis }).index]++;
+  }
+  const p = priorDistribution();
+  counts.forEach((c, i) => assert.ok(Math.abs(c / total - p[i]) < 1e-12, `${TYPES[i].label}: ${c / total} vs ${p[i]}`));
+  assert.ok(Math.abs(p.reduce((a, b) => a + b, 0) - 1) < 1e-9);
+  const minBase = Math.min(...p.slice(0, BASE_COUNT));
+  HIDDEN.forEach((h) => assert.ok(p[h.index] < minBase, TYPES[h.index].label));
+  assert.ok(p[19] < Math.min(p[16], p[17], p[18]));
+});
+
+test('パラメータ・段階・ランク・二つ名・恋愛タイプ', () => {
+  const d = judge({ axis: axisAnswers([3, -3, 3, -3]), param: paramAnswers([3, 0, 2, 1, 3, 0]) });
+  assert.deepEqual(d.paramRaw, [12, 0, 8, 4, 12, 0]);
+  assert.deepEqual(d.params, [100, 0, 67, 33, 100, 0]);
+  assert.equal(d.love, loveIndexOf(d.params));
+  assert.equal(d.love, 4 + 0 + 1);
+  assert.ok(fullName(d).startsWith(d.nickname.text) && fullName(d).endsWith(TYPES[d.index].label));
+  // 二つ名は50%からいちばん遠いパラメータ。同点なら起点からの順
+  assert.deepEqual(nicknameOf([50, 50, 92, 8, 50, 50], 0), { param: 2, side: 'high', text: PARAMS[2].high });
+  assert.deepEqual(nicknameOf([50, 50, 92, 8, 50, 50], 3), { param: 3, side: 'low', text: PARAMS[3].low });
+  // 恋愛タイプのしきい値（58%は高、50%は低）
+  assert.equal(loveIndexOf([58, 50, 58]), 5);
+  assert.equal(loveIndexOf([50, 58, 50]), 2);
+  // 段階とランク
+  assert.deepEqual([0, 33, 34, 66, 67, 100].map(paramLevel), [0, 0, 1, 1, 2, 2]);
+  assert.deepEqual([0, 24, 25, 41, 42, 66, 67, 84, 85, 100].map(rankOf), ['D', 'D', 'C', 'C', 'B', 'B', 'A', 'A', 'S', 'S']);
+  // 二つ名は全パラメータ×高低の12通り、恋愛タイプは8通りすべてに到達できる
+  const nick = new Set();
+  const love = new Set();
+  for (let a = 0; a < 6; a++) for (const v of [0, 3]) {
+    const c = [1, 2, 1, 2, 1, 2];
+    c[a] = v;
+    nick.add(judge({ axis: axisAnswers([3, 3, 3, 3]), param: paramAnswers(c) }).nickname.text);
+  }
+  for (let m = 0; m < 8; m++) {
+    const c = [m & 4 ? 3 : 0, m & 2 ? 3 : 0, m & 1 ? 3 : 0, 1, 1, 1];
+    love.add(judge({ axis: axisAnswers([3, 3, 3, 3]), param: paramAnswers(c) }).love);
+  }
+  assert.equal(nick.size, 12);
+  assert.equal(love.size, 8);
 });
 
 test('相性：対称で、いちばん高い相手はデータの相性◎と一致する', () => {
@@ -114,34 +186,45 @@ test('相性：対称で、いちばん高い相手はデータの相性◎と�
     assert.equal(top.index, a ^ 12);
     assert.equal(TYPES[a].best, a ^ 12, `${TYPES[a].label} の相性◎がずれている`);
     assert.ok(top.score >= 90);
+    assert.equal(top.rank, '最強の相方');
   }
   const scores = [];
   for (let a = 0; a < 16; a++) for (let b = 0; b < 16; b++) scores.push(compat(a, b).score);
-  assert.ok(Math.min(...scores) >= 40 && Math.max(...scores) <= 99);
+  assert.ok(Math.min(...scores) >= 50 && Math.max(...scores) <= 99);
   assert.equal(compat(3, 3).rank, '分身');
 });
 
 test('裏タイプは最も弱い軸をひっくり返したタイプ', () => {
-  const u = uraOf([7, -1, 9, -15]);
+  const u = uraOf([7, -1, 9, -5]);
   assert.equal(u.axis, 1);
   assert.equal(u.index, 0b1010 ^ 0b0100);
 });
 
 test('結果のURL表現は往復できて、不正な値は弾く', () => {
-  const r = judge(answersFor([3, -1, 1, -3]));
-  const back = decodeResult(encodeResult(r));
-  assert.deepEqual(back.sums, r.sums);
-  assert.equal(back.index, r.index);
+  const q = judge({ axis: axisAnswers([3, -1, 1, -3]) });
+  const qb = decodeResult(encodeResult(q));
+  assert.deepEqual(qb.sums, q.sums);
+  assert.equal(qb.mode, 'quick');
+  const d = judge({ axis: axisAnswers([3, -1, 1, -3]), param: paramAnswers([3, 2, 3, 0, 1, 2]) });
+  const code = encodeResult(d);
+  assert.match(code, /~[0-9a-c]{6}$/);
+  const db = decodeResult(code);
+  assert.equal(db.mode, 'detail');
+  assert.deepEqual(db.params, d.params);
+  assert.equal(db.nickname.text, d.nickname.text);
+  assert.equal(quickCodeOf(code), encodeResult(q));
   assert.equal(decodeResult('5~2_1_1_1'), null); // 偶数はありえない
-  assert.equal(decodeResult('5~99_1_1_1'), null);
+  assert.equal(decodeResult('5~11_1_1_1'), null); // ±11 はありえない
+  assert.equal(decodeResult('5~1_1_-1_-1~d00000'), null); // パラメータは0〜12（c）まで
+  assert.equal(decodeResult('5~1_1_-1_-1~0000000'), null); // パラメータは6文字
   assert.equal(decodeResult('<script>'), null);
-  assert.equal(decodeResult('0~15_15_15_15'), null); // 0番なのに全部pos側
+  assert.equal(decodeResult('0~9_9_9_9'), null); // 0番なのに全部pos側
 });
 
 test('純度は50〜99%、軸の一言は全段階にある', () => {
   assert.equal(purityOf([AXIS_MAX, -AXIS_MAX, AXIS_MAX, -AXIS_MAX]), 99);
   assert.ok(purityOf([1, -1, 1, -1]) >= 50);
-  [1, 5, 11, 15].forEach((s) => AXES.forEach((_, a) => {
+  [1, 3, 7, 9].forEach((s) => AXES.forEach((_, a) => {
     assert.ok(axisLine(a, s));
     assert.ok(axisLine(a, -s));
   }));
