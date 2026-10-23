@@ -157,6 +157,8 @@ test('決済の開始：Stripeの価格と画面の価格がちがえば止め�
     assert.equal(form.get('payment_method_types[1]'), null);
     assert.match(form.get('cancel_url'), /\/thanks\/\?canceled=1$/);
     assert.match(form.get('custom_text[submit][message]'), /返品・キャンセルはできません/);
+    const expires = Number(form.get('expires_at')) - Math.floor(Date.now() / 1000);
+    assert.ok(expires > 3500 && expires <= 3600, `決済の画面は60分で切れる: ${expires}`);
     assert.equal(form.get('metadata[ab]'), null);
     await checkoutPost({ request: post('/api/checkout', { plan: 'solo', ab: 'paybar:specific,paybar:amount,autopay:off,evil:x' }), env });
     assert.equal(new URLSearchParams(stripe.sent.at(-1).body).get('metadata[ab]'), 'paybar:specific,autopay:off', 'A/Bの目印は定義にあるもの・1実験1つだけ');
@@ -240,9 +242,13 @@ test('Webhook：署名を確かめて購入と受け取りを記録し、返金�
   assert.equal((await send(completed, sign(JSON.stringify(completed), now(), 'other'))).status, 400);
   // 受け取り前は pending
   assert.equal((await claimGet({ request: req(`/api/claim?s=${secret}`), env })).status, 404);
+  const paidOf = async () => (await claimGet({ request: req(`/api/claim?rid=${rid}`), env })).json();
+  assert.deepEqual(await paidOf(), { paid: false }, '支払い前');
   assert.equal((await send(completed)).status, 200);
   assert.equal((await send(completed)).status, 200, '同じ通知が2回来ても大丈夫');
   assert.equal(DB.raw.prepare("SELECT n FROM counters WHERE k = 'premium:paid'").get().n, 1);
+  // おうちの人のページ：支払い済みかどうかだけが分かる（トークンは返らない）
+  assert.deepEqual(await paidOf(), { paid: true });
   // 子どもの端末は秘密で受け取れる。リンクに入っている受け取りIDだけでは受け取れない
   const claimed = await (await claimGet({ request: req(`/api/claim?s=${secret}`), env })).json();
   assert.equal(await verifyToken(env, claimed.token), 'cs_test_parent000000');
@@ -272,6 +278,16 @@ test('Webhook：署名を確かめて購入と受け取りを記録し、返金�
   assert.equal((await premiumGet({ request: req('/api/premium?i=1', bearer(disputed)), env })).status, 403);
   await send({ type: 'charge.dispute.closed', data: { object: { payment_intent: 'pi_dispute', status: 'won' } } });
   assert.equal((await premiumGet({ request: req('/api/premium?i=1', bearer(disputed)), env })).status, 200, '申し立てに勝ったら戻す');
+  // カード会社の問い合わせ（warning_）では止めない。申し立てに変わったら止め、問い合わせのまま閉じたら戻す
+  await send({ type: 'checkout.session.completed', data: { object: { id: 'cs_test_inquiry00000', ...paid('solo', { payment_intent: 'pi_inquiry' }) } } });
+  const inquired = await issueToken(env, 'cs_test_inquiry00000');
+  const readable = async () => (await premiumGet({ request: req('/api/premium?i=1', bearer(inquired)), env })).status;
+  await send({ type: 'charge.dispute.created', data: { object: { payment_intent: 'pi_inquiry', status: 'warning_needs_response' } } });
+  assert.equal(await readable(), 200, '問い合わせでは止めない');
+  await send({ type: 'charge.dispute.updated', data: { object: { payment_intent: 'pi_inquiry', status: 'needs_response' } } });
+  assert.equal(await readable(), 403, '申し立てに変わったら止める');
+  await send({ type: 'charge.dispute.closed', data: { object: { payment_intent: 'pi_inquiry', status: 'warning_closed' } } });
+  assert.equal(await readable(), 200, '問い合わせのまま閉じたら戻す');
   assert.equal((await webhookPost({ request: req('/api/stripe-webhook', { method: 'POST', body: '{}' }), env: SECRET })).status, 503);
 });
 
@@ -346,7 +362,10 @@ test('計測：許可したキーだけ数え、日別にも記録する。回�
     ['ab', 'paybar:amount:paid', 400],
     ['ab', 'paybar:nope:exposure', 400],
     ['ab', 'hasOwnProperty:x:exposure', 400],
-    ['ab', 'calc:on:exposure', 204],
+    ['ab', 'calc:on:exposure', 400],
+    ['ab', 'calc:on:result', 204],
+    ['ab', 'calc:off:share', 204],
+    ['ab', 'paybar:amount:share', 400],
     ['share', 'now-nick', 204],
     ['visit', 'return', 204],
     ['visit', 'first', 400],
@@ -456,9 +475,11 @@ test('NGワード：表記ゆれ（半角・全角・空白・見えない文字
   for (const bad of ['バカ', 'ﾊﾞｶ', 'ば か', 'ば\u200bか', 'ＢＡＫＡ', '馬鹿', 'ブサイク', '死んで', 'ばーか', 'ＦＵＣＫ', '3年2組の高校']) {
     assert.ok(hasNgWord(bad), bad);
   }
-  for (const ok of ['かすみ', 'カスミ', 'くずは', 'きもちいい', 'カステラ部', 'ぼっち・ざ・ろっく', '殺せんせー推し', 'ゆう', 'あお']) {
+  for (const ok of ['かすみ', 'カスミ', 'くずは', 'きもちいい', 'カステラ部', 'ぼっち・ざ・ろっく', '殺せんせー推し', 'ゆう', 'あお', 'ゆき もも', 'まき もか', 'みき・もえ', 'もも ころすけ', 'かすが', 'たかすぎ', 'あきもと', 'ぼっちゃん']) {
     assert.ok(!hasNgWord(ok), ok);
   }
+  // 許可語に続けて書いても、悪口は通さない
+  for (const bad of ['しねまじで', 'きもちわるい', 'キモチワルイ', 'ばかすみ', 'し ね']) assert.ok(hasNgWord(bad), bad);
   assert.equal(cleanText('ゆ\u202eう\u200b<b>', 10), 'ゆうb');
 });
 
@@ -485,7 +506,15 @@ test('今週のお題：今週にだけ投票でき、30票に満たない集計
   for (let i = 0; i < 30; i++) await vote({ week, choice: i % 3 === 0 ? 0 : 1, type: 3 }, `192.0.2.${i}`);
   data = await (await pollGet({ request: req(`/api/poll?week=${week}`), env })).json();
   assert.ok(data.total >= 30 && Array.isArray(data.all) && data.all.length === 4);
+  // タイプ3以外の票（タイプなし・回数制限の前の票など）が30票未満なので、引き算で分からないようタイプ別は出さない
+  assert.deepEqual(data.types, {}, '隠した票が少ないときはタイプ別を出さない');
+  for (let i = 0; i < 30; i++) await vote({ week, choice: 2, type: 5 }, `198.18.0.${i}`);
+  data = await (await pollGet({ request: req(`/api/poll?week=${week}`), env })).json();
+  assert.deepEqual(data.types, {}, 'タイプなしの票がまだ30票未満');
+  for (let i = 0; i < 30; i++) await vote({ week, choice: 3 }, `198.19.0.${i}`);
+  data = await (await pollGet({ request: req(`/api/poll?week=${week}`), env })).json();
   assert.deepEqual(data.types['3'], [10, 21, 0, 0]);
+  assert.deepEqual(data.types['5'], [0, 0, 30, 0]);
   assert.equal((await pollGet({ request: req('/api/poll?week=2999-01-04'), env })).status, 400, '先の週は読めない');
   assert.equal((await pollGet({ request: req('/api/poll?week=x'), env })).status, 400);
   // 他のサイトからの投票は弾く

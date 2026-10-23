@@ -217,7 +217,11 @@ await shot(a, '07-report');
 await a.click('.paybar [data-paywall]');
 await a.waitForSelector('.modal:not([hidden]) .includes');
 await shot(a, '08-paywall', false);
-await a.click('.modal .linkish[data-close]');
+// シートを開くとフォーカスが移り、うしろは操作できない。Esc で閉じて、押したボタンにフォーカスが戻る
+check(await a.evaluate(() => document.activeElement?.classList.contains('sheet') && document.getElementById('app').inert), '購入案内を開いても、フォーカスが移らない');
+await a.keyboard.press('Escape');
+check(await a.evaluate(() => document.getElementById('modal').hidden && !document.getElementById('app').inert), 'Esc でシートが閉じない');
+check(await a.evaluate(() => !!document.activeElement?.closest('.paybar')), '閉じたあと、フォーカスが元のボタンに戻らない');
 await a.click('[data-card="nick"]');
 await saveModalImage(a, '09-nick-card');
 await a.click('[data-card="status"]');

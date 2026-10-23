@@ -45,8 +45,13 @@ export async function onRequestGet({ request, env }) {
     else if (/^t\d+$/.test(who)) (types[who.slice(1)] ??= Array(CHOICES).fill(0))[i] = n;
   }
   const total = sum(all);
+  // タイプ別は30票以上のタイプだけ。さらに、出さないタイプ（とタイプなし）の合計も30票以上か0票のときだけ出す
+  // （全体からの引き算で、少ないタイプの答えが分からないように）
+  let shown = Object.fromEntries(Object.entries(types).filter(([, c]) => sum(c) >= MIN));
+  const hidden = total - Object.values(shown).reduce((a, c) => a + sum(c), 0);
+  if (hidden > 0 && hidden < MIN) shown = {};
   return json(
-    { week, total, all: total >= MIN ? all : null, types: Object.fromEntries(Object.entries(types).filter(([, c]) => sum(c) >= MIN)) },
+    { week, total, all: total >= MIN ? all : null, types: shown },
     200,
     { 'cache-control': `public, max-age=${week === current ? 60 : 3600}` },
   );

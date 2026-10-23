@@ -103,9 +103,11 @@ await c.waitForSelector('.nickname');
 sql(`INSERT OR REPLACE INTO claims (rid, token, created_at) VALUES ('${rid}', '${token}', ${Date.now()})`);
 await c.waitForFunction(() => !document.querySelector('.mosaic'), null, { timeout: 20000 });
 check(await c.evaluate(() => !localStorage.getItem('pz:claim')), '受け取りの秘密が残っている');
-// おうちの人が開くページ（子どもの結果は出さない）
+// おうちの人が開くページ（子どもの結果は出さない）。支払い済みのお願いを開き直すと「もう支払い済み」と出て、二重に払わない
 await c.goto(`${base}/#/buy/${rid}`);
-await c.waitForSelector('.includes');
+await c.waitForSelector('.sheet-title');
+check((await c.textContent('.sheet-title')).includes('支払い済み'), '支払い済みのお願いを開き直しても、購入画面が出る');
+check(!(await c.$('[data-buy-for]')), '支払い済みなのに購入ボタンが出る');
 check(!(await c.$('.nickname')), 'おうちの人のページに結果が出ている');
 await c.screenshot({ path: path.join(outDir, 'guardian-page.png'), fullPage: true });
 
@@ -153,11 +155,15 @@ await f.goto(`${base}/thanks/?canceled=1`);
 await f.waitForFunction((r) => location.hash === `#/buy/${r}`, rid, { timeout: 8000 });
 await f.goto(`${base}/#/buy/done`);
 await f.waitForSelector('.sheet-title');
-check((await f.textContent('.sheet-title')).includes('完了していません'), '払っていないのに「完了しました」と出る');
+check(!(await f.textContent('.sheet-title')).includes('完了しました'), '払っていないのに「完了しました」と出る');
 // 作ってから7日を過ぎたお願いのリンクでは、販売しない
-await f.goto(`${base}/#/buy/${rid}/${(Math.floor(Date.now() / 864e5) - 8).toString(36)}/000`);
+// （支払い済みのお願いは「支払い済み」が先に出るので、まだ払われていない受け取りIDで確かめる）
+await f.goto(`${base}/#/buy/bcdefghijklmnopq/${(Math.floor(Date.now() / 36e5) - 7 * 24 - 2).toString(36)}/000`);
 await f.waitForSelector('.sheet-title');
 check((await f.textContent('.sheet-title')).includes('期限'), '期限切れのお願いリンクで販売画面が出る');
+// まだ払われていない、期限内のお願いなら、中身の案内が出る
+await f.goto(`${base}/#/buy/abcdefghijklmnop/${Math.floor(Date.now() / 36e5).toString(36)}/000`);
+await f.waitForSelector('.includes', { timeout: 8000 });
 
 // 6. グループ（くわしい診断の結果でも、保存するのはかんたん診断の部分だけ）・抜ける
 await a.goto(`${base}/`);

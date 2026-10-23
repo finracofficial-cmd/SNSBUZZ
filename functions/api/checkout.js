@@ -46,6 +46,8 @@ export async function onRequestPost({ request, env }) {
     'metadata[app]': 'ponkotsu',
     'metadata[plan]': plan,
     'custom_text[submit][message]': SUBMIT_NOTE,
+    // 決済の画面は60分で切れる（やめた決済を、端末がいつまでも確かめに行かないように）
+    expires_at: String(Math.floor(Date.now() / 1000) + 3600),
   });
   paymentMethodsOf(env).forEach((m, i) => form.set(`payment_method_types[${i}]`, m));
   if (Number.isInteger(body?.index) && body.index >= 0 && body.index < 20) form.set('metadata[type]', String(body.index));

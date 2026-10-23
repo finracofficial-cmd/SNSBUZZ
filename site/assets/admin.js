@@ -5,7 +5,7 @@
 //   ・A/Bテスト：案ごとの表示・購入案内・決済・支払い完了と、差があるかの目安（2つの割合の z 検定）
 //   ・タイプ別の完了数
 import { TYPES } from './data.js';
-import { EXPERIMENTS, twoProportion } from './experiments.js';
+import { EXPERIMENTS, twoProportion, metricsOf } from './experiments.js';
 import { esc, render, api, brand } from './ui.js';
 
 const pct = (a, b) => (b ? `${((a / b) * 100).toFixed(1)}%` : '—');
@@ -81,25 +81,27 @@ function daily(c) {
     <p class="hint">${series.map(([n, , color]) => `<span style="color:${color}">■</span> ${n}`).join('　')}（日本時間の日付。支払い完了は別の目盛りで、最大 ${maxPaid}件）</p>`;
 }
 
-// 判定は、各案の表示が先に決めた人数に達してから1回だけ（途中で何度も見て、差が出たところで止めると、
-// 本当は差がなくても「差あり」と出やすくなる）。購入率3%前後で1ポイントの差を見るには、各案およそ5,000人
-const AB_TARGET = 5000;
+// 判定は、各案の分母（最初の段階）が先に決めた人数に達してから1回だけ（途中で何度も見て、差が出たところで止めると、
+// 本当は差がなくても「差あり」と出やすくなる）。購入率3%前後で1ポイントの差を見るには各案およそ5,000人、
+// calc のシェア率10%前後で2ポイントの差を見るには各案およそ3,500人
+const AB_TARGETS = { calc: 3500 };
+const STEP_NAMES = { exposure: '表示', cta: '購入案内', checkout: '決済へ', paid: '支払い', result: '結果', share: 'シェア', agree: 'わかる〜！', detail: 'くわしい診断へ' };
 function abTable(c) {
   return Object.entries(EXPERIMENTS)
     .map(([name, variants]) => {
-      const row = (v) => {
-        const g = (s) => c[`ab:${name}:${v}:${s}`] || 0;
-        return { v, exposure: g('exposure'), cta: g('cta'), checkout: g('checkout'), paid: g('paid') };
-      };
-      const rows = variants.map(row);
+      const steps = metricsOf(name);
+      const [base, ...outs] = steps;
+      const rows = variants.map((v) => ({ v, n: Object.fromEntries(steps.map((st) => [st, c[`ab:${name}:${v}:${st}`] || 0])) }));
+      const target = AB_TARGETS[name] || 5000;
+      const reached = rows.every((r) => r.n[base] >= target);
       const [a, b] = rows;
-      const pPaid = a && b ? twoProportion(a.paid, a.exposure, b.paid, b.exposure) : null;
-      const pCheckout = a && b ? twoProportion(a.checkout, a.exposure, b.checkout, b.exposure) : null;
-      const reached = rows.every((r) => r.exposure >= AB_TARGET);
-      const verdict = (p) => (!reached ? 'まだ判定しない' : p == null ? '判断できない' : p < 0.05 ? `差がありそう（p=${p.toFixed(3)}）` : `差は見えない（p=${p.toFixed(3)}）`);
-      return `<h3>${esc(name)}</h3><table class="kpi"><tr><th>案</th><th>表示</th><th>購入案内</th><th>決済へ</th><th>支払い</th><th>支払い率</th></tr>${rows
-        .map((r) => `<tr><td>${esc(r.v)}</td><td>${r.exposure}</td><td>${r.cta}</td><td>${r.checkout}</td><td>${r.paid}</td><td>${pct(r.paid, r.exposure)}</td></tr>`)
-        .join('')}</table><p class="hint">決済へ進んだ率：${verdict(pCheckout)}／支払い率：${verdict(pPaid)}。${reached ? '' : `判定は、各案の表示が${AB_TARGET.toLocaleString('ja-JP')}人に達してから（いま ${rows.map((r) => r.exposure).join('・')}人）。途中で止めて結論を出さないでください。`}</p>`;
+      const verdict = (st) => {
+        const p = a && b ? twoProportion(a.n[st], a.n[base], b.n[st], b.n[base]) : null;
+        return `${STEP_NAMES[st]}の率：${!reached ? 'まだ判定しない' : p == null ? '判断できない' : p < 0.05 ? `差がありそう（p=${p.toFixed(3)}）` : `差は見えない（p=${p.toFixed(3)}）`}`;
+      };
+      return `<h3>${esc(name)}</h3><table class="kpi"><tr><th>案</th>${steps.map((st) => `<th>${STEP_NAMES[st]}</th>`).join('')}</tr>${rows
+        .map((r) => `<tr><td>${esc(r.v)}</td>${steps.map((st, k) => `<td>${r.n[st]}${k ? `<small>（${pct(r.n[st], r.n[base])}）</small>` : ''}</td>`).join('')}</tr>`)
+        .join('')}</table><p class="hint">${outs.filter((st) => st !== 'cta').map(verdict).join('／')}。${reached ? '' : `判定は、各案の「${STEP_NAMES[base]}」が${target.toLocaleString('ja-JP')}人に達してから（いま ${rows.map((r) => r.n[base]).join('・')}人）。途中で止めて結論を出さないでください。`}</p>`;
     })
     .join('');
 }

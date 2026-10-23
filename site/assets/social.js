@@ -231,7 +231,7 @@ export function openGroupCreate() {
     }
     const res = await api('groups', { method: 'POST', body: { name } });
     if (!res || res.error) {
-      sheet.querySelector('#group-msg').textContent = GROUP_ERRORS[res?.error] || 'いまはグループを作れません。時間をおいて、もう一度ためしてね';
+      sheet.querySelector('#group-msg').textContent = (res?.error === 'ng' && res.word ? `「${res.word}」は使えない言葉です。ほかの名前にしてね` : GROUP_ERRORS[res?.error]) || 'いまはグループを作れません。時間をおいて、もう一度ためしてね';
       return;
     }
     // 作った人だけが持つ管理キー（メンバーを外す・グループを消す）
@@ -246,7 +246,7 @@ export function openGroupCreate() {
 async function leaveGroup(id, body, msg) {
   const res = await api(`groups/${id}`, { method: 'DELETE', body });
   if (!res || res.error) {
-    toast(GROUP_ERRORS[res?.error] || 'うまくいきませんでした');
+    toast((res?.error === 'ng' && res.word ? `「${res.word}」は使えない言葉です。ほかの名前にしてね` : GROUP_ERRORS[res?.error]) || 'うまくいきませんでした');
     return false;
   }
   toast(msg);
@@ -337,7 +337,7 @@ export async function viewGroup(id) {
       // グループには、かんたん診断の結果だけを送る（くわしい診断のパラメータは送らない）
       const res = await api(`groups/${id}`, { method: 'POST', body: { secret: memberSecret, nick, code: quickCodeOf(mine.code) } });
       if (!res || res.error) {
-        toast(GROUP_ERRORS[res?.error] || '参加できませんでした');
+        toast((res?.error === 'ng' && res.word ? `「${res.word}」は使えない言葉です。ほかの名前にしてね` : GROUP_ERRORS[res?.error]) || '参加できませんでした');
         return;
       }
       track('group', 'join');
@@ -358,7 +358,7 @@ export async function viewGroup(id) {
   app.querySelector('[data-lock]')?.addEventListener('click', async () => {
     const res = await api(`groups/${id}`, { method: 'PATCH', body: { admin, locked: !g.locked } });
     if (!res || res.error) {
-      toast(GROUP_ERRORS[res?.error] || 'うまくいきませんでした');
+      toast((res?.error === 'ng' && res.word ? `「${res.word}」は使えない言葉です。ほかの名前にしてね` : GROUP_ERRORS[res?.error]) || 'うまくいきませんでした');
       return;
     }
     toast(g.locked ? '参加の受付を再開しました' : '参加を締め切りました');

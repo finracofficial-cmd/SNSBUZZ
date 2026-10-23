@@ -15,7 +15,7 @@ import { openProfileCard } from './profile.js';
 import { shareCarousel, shareUrl, bindSticker } from './result.js';
 import { textResult } from './textshare.js';
 import { canRecordVideo, recordReveal } from './video.js';
-import { nowCard, bindNowCard } from './now.js';
+import { nowCard, bindNowCard, keepNowFresh } from './now.js';
 import { variant, abTrack } from './ab.js';
 
 const typePath = (index) => `#/t/${typeNo(index).toLowerCase()}`;
@@ -270,6 +270,7 @@ export async function viewReport(r, shareId) {
   app.querySelector('[data-group]').addEventListener('click', openGroupCreate);
   app.querySelector('[data-prof]').addEventListener('click', () => openProfileCard(r));
   bindNowCard(r.index, url);
+  keepNowFresh(r.index, gen, navNow);
   bindSticker(r, url);
   app.querySelectorAll('[data-card]').forEach((b) =>
     b.addEventListener('click', () => {

@@ -69,24 +69,54 @@ export const cleanText = (s, max) =>
     .slice(0, max)
     .join('');
 
-// NGワードの照合用に、表記をそろえる：全角・半角（NFKC）→ カタカナをひらがなへ → 空白・記号・のばし棒を除く → 小文字
+// NGワードの照合用に、表記をそろえる：全角・半角（NFKC）→ カタカナをひらがなへ → 記号・のばし棒を除く → 小文字
+const SEP = /[\s・･.,、。!！?？~〜\-_*＊/／|｜'"`]+/;
 const normalize = (s) =>
   String(s)
     .normalize('NFKC')
     .replace(INVISIBLE, '')
     .replace(/[\u30a1-\u30f6]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0x60))
-    .replace(/[\s・･.,、。!！?？~〜ー\-_*＊/／|｜'"`]/g, '')
+    .replace(new RegExp(SEP.source, 'g'), '')
+    .replace(/ー/g, '')
     .toLowerCase();
 // ニックネーム・グループ名に使えない言葉（悪口・個人を特定しやすい語の代表例）
 const NG_NAMES = [
-  'ばか', '馬鹿', 'あほ', '阿呆', 'ぶす', 'ぶさいく', '不細工', 'でぶ', 'きも', 'うざ', 'しね', '死ね', '氏ね', '死んで', 'ころす', '殺',
+  'ばか', '馬鹿', 'あほ', '阿呆', 'ぶす', 'ぶさいく', '不細工', 'でぶ', 'きも', 'きもちわる', 'きしょ', 'うざ', 'しね', 'しねまじ', '死ね', '氏ね', '死んで', 'ころす', '殺',
   'くず', 'ごみ', 'かす', 'ぼっち', '陰きゃ', 'いじめ', '消えろ', 'きえろ', 'baka', 'fuck', 'shit',
   '小学校', '中学校', '高校', '学園', '大学',
 ].map(normalize);
-// NGワードを含んでいても使ってよい言葉（名前や作品名でよくあるもの）
-const ALLOWED = ['きもち', 'きもの', 'かすみ', 'かすたーど', 'かすてら', 'くずは', 'くずもち', 'ぼっちざろっく', '殺せんせー', 'しねま'].map(normalize);
-export const hasNgWord = (s) => {
-  let t = normalize(s);
-  ALLOWED.forEach((w) => (t = t.split(w).join('')));
-  return NG_NAMES.some((w) => t.includes(w));
-};
+// NGワードを含んでいても使ってよい言葉（名前や作品名でよくあるもの）。この範囲の中で見つかった一致だけを見のがす
+const ALLOWED = ['きもち', 'きもの', 'かすみ', 'かすが', 'かすたーど', 'かすてら', 'くずは', 'くずもち', 'ぼっちざろっく', 'ぼっちゃん', '殺せんせー', 'しねま', 'ころすけ', 'たかすぎ', 'あきもと'].map(normalize);
+function hitIn(text, word) {
+  const allowed = [];
+  ALLOWED.forEach((w) => {
+    for (let i = text.indexOf(w); i >= 0; i = text.indexOf(w, i + 1)) allowed.push([i, i + w.length]);
+  });
+  for (let i = text.indexOf(word); i >= 0; i = text.indexOf(word, i + 1)) {
+    if (!allowed.some(([a, b]) => a <= i && i + word.length <= b)) return true;
+  }
+  return false;
+}
+// 引っかかった言葉を返す（なければ ''）。
+// 2文字の言葉（きも・かす・しね…）は、空白で区切った語の中だけで探す（「ゆき もも」を弾かないように）。
+// ただし1文字ずつ空けた書き方（「ば か」）は、つなげて探す。3文字以上の言葉は、全体をつなげて探す
+export function ngWordOf(s) {
+  const raw = String(s ?? '').normalize('NFKC').replace(INVISIBLE, '');
+  const words = [];
+  let run = ''; // 1文字ずつ空けて書いた並び（「ば か」）は1語にまとめる
+  for (const piece of raw.split(SEP).map(normalize).filter(Boolean)) {
+    if (Array.from(piece).length === 1) run += piece;
+    else {
+      if (run) words.push(run);
+      run = '';
+      words.push(piece);
+    }
+  }
+  if (run) words.push(run);
+  const joined = normalize(raw);
+  for (const w of NG_NAMES) {
+    if (Array.from(w).length <= 2 ? words.some((t) => hitIn(t, w)) : hitIn(joined, w)) return w;
+  }
+  return '';
+}
+export const hasNgWord = (s) => !!ngWordOf(s);

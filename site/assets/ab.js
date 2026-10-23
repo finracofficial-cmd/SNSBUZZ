@@ -1,6 +1,6 @@
 // A/Bテストの割り当てと計測。端末ごとに一度だけ決めて、ずっと同じものを見せる。
 // 計測は端末ごとに各段階1回まで（同じ人が何度レポートを開いても、表示は1回と数える）。
-import { EXPERIMENTS } from './experiments.js';
+import { EXPERIMENTS, metricsOf } from './experiments.js';
 import { store, track } from './ui.js';
 
 export function variant(name) {
@@ -13,10 +13,25 @@ export function variant(name) {
   return v;
 }
 
+// 段階は、その段階を見る実験にだけ送る。送った印は実験ごと（あとから足した実験も、正しく1回目を数える）
 export function abTrack(step) {
-  if (store.get(`ab:sent:${step}`, false)) return;
-  store.set(`ab:sent:${step}`, true);
-  Object.keys(EXPERIMENTS).forEach((name) => track('ab', `${name}:${variant(name)}:${step}`));
+  Object.keys(EXPERIMENTS)
+    .filter((name) => metricsOf(name).includes(step) && !store.get(`ab:sent:${name}:${step}`, false))
+    .forEach((name) => {
+      store.set(`ab:sent:${name}:${step}`, true);
+      track('ab', `${name}:${variant(name)}:${step}`);
+    });
+}
+
+// calc（結果の直前の「計算中」）の効き目：結果を見たあとのシェア・「わかる〜！」・くわしい診断の開始を数える
+if (typeof window !== 'undefined') {
+  window.addEventListener('pz:track', (e) => {
+    const { k, v } = e.detail || {};
+    if (!store.get('ab:sent:calc:result', false)) return;
+    if (k === 'share') abTrack('share');
+    else if (k === 'agree' && v === 'yes') abTrack('agree');
+    else if (k === 'detail' && v === 'start') abTrack('detail');
+  });
 }
 
 // 決済に渡す目印（支払い完了をサーバーで数えるときに使う）

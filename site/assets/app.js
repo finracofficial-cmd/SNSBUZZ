@@ -9,7 +9,7 @@ import { startQuiz, handleQuizClick, cancelQuiz, savedQuickAnswers, optionsHtml,
 import { viewResult, viewType, viewZukan, showLockedType, receiveCarryover } from './result.js';
 import { viewReport } from './report.js';
 import { viewAdmin } from './admin.js';
-import { nowName } from './now.js';
+import { nowName, keepNowFresh } from './now.js';
 import { pollCard, bindPoll, viewPollWeek } from './polls.js';
 import {
   receiveInvite,
@@ -94,7 +94,7 @@ async function viewHome() {
       <div class="meta-row"><span class="pill">16タイプ＋隠し${HIDDEN.length}タイプ</span><span class="pill">二つ名240通り</span><span class="pill">診断は無料・登録なし</span></div>
     </section>
     ${mine && TYPES[mine.index] && mine.code ? `<a class="card mini-result" href="#/r/${esc(mine.code)}/${esc(mine.shareId)}">
-      ${charaSVG(mine.index, { size: 64 })}<div><small>前回のあなた</small><b>${esc(TYPES[mine.index].label)}</b><small class="now-line">いまは「${esc(nowName(mine.index).text)}」</small></div><span>結果を見る →</span></a>` : `
+      ${charaSVG(mine.index, { size: 64 })}<div><small>前回のあなた</small><b>${esc(TYPES[mine.index].label)}</b><small class="now-line" data-now-line>いまは「${esc(nowName(mine.index).text)}」</small></div><span>結果を見る →</span></a>` : `
     <section class="card q1card"><p class="lead">さっそく1問目（全${QUESTIONS.length}問）</p>
       <h2 class="qtext">${esc(q1.text)}</h2>
       ${questionHint(q1, true)}
@@ -126,6 +126,7 @@ async function viewHome() {
     ${foot()}`);
   app.querySelector('[data-group-create]').addEventListener('click', openGroupCreate);
   bindPoll(gen, navNow);
+  if (mine && TYPES[mine.index]) keepNowFresh(mine.index, gen, navNow);
   app.querySelectorAll('[data-q1]').forEach((b) =>
     b.addEventListener('click', () => {
       b.classList.add('on');
@@ -186,14 +187,16 @@ async function viewLegal() {
     ${foot()}`);
 }
 
-// おうちの人の支払いが終わったページ。受け取れたとき（1時間以内）だけ「完了」と出す
+// おうちの人の支払いが終わったページ。この端末で支払いを受けつけた印があるときだけ「完了」と出す。
+// 印がないときも「払っていない」とは決めつけない（別の端末・データが消えた・あとで開き直した、がありうる）
 function viewBuyDone() {
-  const paid = Date.now() - store.get('childPaidAt', 0) < 3600 * 1000;
+  const paid = !!store.get('childPaid', null);
   render(paid
     ? `${brand()}<section class="card"><h1 class="sheet-title">お支払いが完了しました</h1>
       <p>お子さまのスマホで、完全版が読めるようになりました。表示が変わらないときは、お子さまにページを開き直してもらってください。</p></section>${foot()}`
-    : `${brand()}<section class="card"><h1 class="sheet-title">お支払いは完了していません</h1>
-      <p>お支払いの記録が見つかりませんでした。お子さまから届いたリンクを開いて、もう一度お手続きください。</p></section>${foot()}`);
+    : `${brand()}<section class="card"><h1 class="sheet-title">お支払いの状態</h1>
+      <p>この画面では、お支払いの状態を確かめられませんでした。まず、お子さまのスマホで完全版が開いているかを確かめてください。</p>
+      <p class="hint">開いていないときは、お子さまから届いたリンクをもう一度開いてください。支払い済みなら、そのページに「もう支払い済みです」と出ます。</p></section>${foot()}`);
   if (paid) maybeShowAfterPurchase();
 }
 
@@ -269,7 +272,7 @@ async function routeInner() {
   } else if (view === 'qboard') viewQuizBoard();
   else if (view === 'buy' && a === 'done') viewBuyDone();
   else if (view === 'buy' && /^[a-z2-7]{16}$/.test(a || '')) await viewBuyFor(a, render, b || '', c || '');
-  else if (view === 'gift') viewGift(safeDecode(a), { render, brand, foot });
+  else if (view === 'gift') await viewGift(safeDecode(a), { render, brand, foot });
   else if (view === 'unlock') {
     const r = await acceptToken(safeDecode(a));
     toast({ ok: '完全版が開きました', same: 'この端末では、もう完全版が読めます', has: 'この端末では、もう完全版が読めます（いまの購入のまま使います）' }[r] || 'リンクを確認できませんでした');

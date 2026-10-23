@@ -1,6 +1,6 @@
 // POST /api/event {k, v} — 診断開始・完了・シェア・流入を数えるだけ。個人を識別する情報は受け取らない。
 import { rateLimited, crossSite } from '../_lib/http.js';
-import { EXPERIMENTS, AB_STEPS } from '../_lib/experiments.js';
+import { EXPERIMENTS, metricsOf } from '../_lib/experiments.js';
 
 const SHARE = [
   'x', 'line', 'link', 'native', 'invite', 'quiz',
@@ -27,7 +27,7 @@ const ALLOWED = {
   // A/Bテスト「実験:案:段階」。支払い完了（paid）はサーバー側で数える
   ab: (v) => {
     const [name, variant, step] = v.split(':');
-    return Object.hasOwn(EXPERIMENTS, name) && EXPERIMENTS[name].includes(variant) && AB_STEPS.includes(step) && step !== 'paid' ? v : null;
+    return Object.hasOwn(EXPERIMENTS, name) && EXPERIMENTS[name].includes(variant) && metricsOf(name).includes(step) && step !== 'paid' ? v : null;
   },
 };
 

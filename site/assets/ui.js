@@ -40,6 +40,12 @@ export const store = {
 };
 
 export function track(k, v = '') {
+  // A/Bテストの段階を数えるために、ほかのモジュールへも知らせる（ab.js が聞いている）
+  try {
+    window.dispatchEvent(new CustomEvent('pz:track', { detail: { k, v: String(v) } }));
+  } catch {
+    // 知らせられなくても計測は続ける
+  }
   try {
     const body = new Blob([JSON.stringify({ k, v: String(v) })], { type: 'application/json' });
     navigator.sendBeacon?.('/api/event', body);
@@ -67,7 +73,7 @@ export async function api(path, { method = 'GET', body, token, timeout = 4000, h
     const type = res.headers.get('content-type') || '';
     if (!type.includes('application/json')) return null;
     const data = await res.json();
-    return res.ok ? data : { error: data.error || 'error', status: res.status };
+    return res.ok ? data : { ...data, error: data.error || 'error', status: res.status };
   } catch {
     return null;
   }
@@ -139,24 +145,48 @@ export function toast(msg) {
   toast.t = setTimeout(() => (toastEl.hidden = true), 2400);
 }
 
+// 画面の上に重ねるシート。開いたらシートにフォーカスを移し、うしろの画面は操作できないようにする（inert）。
+// Esc で閉じ、閉じたら開く前のボタンへフォーカスを戻す（キーボード・読み上げの利用者が確認に気づけるように）
+let returnFocus = null;
 export function openModal(html, onClose) {
-  modalEl.innerHTML = `<div class="sheet" role="dialog" aria-modal="true">${html}</div>`;
+  if (modalEl.hidden) returnFocus = document.activeElement;
+  else {
+    // 開いているシートを置きかえるときは、前のシートの後片づけ（確認なら「やめる」扱い）をしておく
+    const prev = closeModal.cb;
+    closeModal.cb = null;
+    prev?.();
+  }
+  modalEl.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" tabindex="-1">${html}</div>`;
   modalEl.hidden = false;
+  app.inert = true;
   modalEl.onclick = (e) => {
     if (e.target === modalEl || e.target.closest('[data-close]')) closeModal();
   };
   closeModal.cb = onClose;
-  return modalEl.querySelector('.sheet');
+  const sheet = modalEl.querySelector('.sheet');
+  const title = sheet.querySelector('h1, h2, .sheet-title, p');
+  if (title) {
+    title.id ||= 'modal-title';
+    sheet.setAttribute('aria-labelledby', title.id);
+  }
+  sheet.focus({ preventScroll: true });
+  return sheet;
 }
 
 export function closeModal() {
   if (modalEl.hidden) return;
   modalEl.hidden = true;
   modalEl.innerHTML = '';
+  app.inert = false;
   const cb = closeModal.cb;
   closeModal.cb = null;
   cb?.();
+  if (returnFocus?.isConnected) returnFocus.focus({ preventScroll: true });
+  returnFocus = null;
 }
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !modalEl.hidden) closeModal();
+});
 
 // 確認の画面（window.confirm はアプリの中のブラウザで出ないことがあるので使わない）
 export function confirmModal(text, ok = 'はい') {

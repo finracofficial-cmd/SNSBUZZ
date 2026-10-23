@@ -549,3 +549,4 @@ table.kpi td small { color: var(--sub); font-size: 10px; margin-left: 2px; }
 @keyframes calc-check { to { opacity: 1; } }
 @keyframes calc-done { to { color: var(--ink); } }
 .confirm-text { font-weight: 700; line-height: 1.6; margin: 4px 0 14px; }
+.modal .sheet:focus { outline: none; }

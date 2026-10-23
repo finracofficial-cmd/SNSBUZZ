@@ -1,10 +1,11 @@
 // POST /api/stripe-webhook — Stripe からの通知。ブラウザが /thanks/ に戻れなかったときも購入を記録し、
 // おうちの人の支払いなら子どもの端末への受け取りを用意する。
 // 全額返金・チャージバック（不正利用の申し立て）では、その購入では読めなくする（一部返金では止めない）。
+// カード会社からの「問い合わせ」（status が warning_ で始まる）では止めない。本当の申し立てに変わったら止める。
 // 申し立てで販売者が勝ったら、また読めるようにする。購入の記録より先に届いても取りこぼさないよう、refunds 表に残す。
 // Stripe のダッシュボードで次のイベントを送るように設定し、署名シークレットを STRIPE_WEBHOOK_SECRET に入れる:
 //   checkout.session.completed / checkout.session.async_payment_succeeded / charge.refunded
-//   charge.dispute.created / charge.dispute.closed
+//   charge.dispute.created / charge.dispute.updated / charge.dispute.closed
 import { json, sameText } from '../_lib/http.js';
 import { isOurSession, recordPurchase } from '../_lib/purchase.js';
 
@@ -56,9 +57,9 @@ export async function onRequestPost({ request, env }) {
     if (isOurSession(obj) && obj.payment_status === 'paid') await recordPurchase(env, obj);
   } else if (event.type === 'charge.refunded' && obj?.payment_intent) {
     if (obj.refunded === true || Number(obj.amount_refunded) >= Number(obj.amount)) await revoke(env, String(obj.payment_intent), 'refund');
-  } else if (event.type === 'charge.dispute.created' && obj?.payment_intent) {
-    await revoke(env, String(obj.payment_intent), 'dispute');
-  } else if (event.type === 'charge.dispute.closed' && obj?.payment_intent && obj.status === 'won') {
+  } else if ((event.type === 'charge.dispute.created' || event.type === 'charge.dispute.updated') && obj?.payment_intent) {
+    if (!String(obj.status || '').startsWith('warning_')) await revoke(env, String(obj.payment_intent), 'dispute');
+  } else if (event.type === 'charge.dispute.closed' && obj?.payment_intent && ['won', 'warning_closed'].includes(obj.status)) {
     const pi = String(obj.payment_intent);
     await env.DB.batch([
       env.DB.prepare("DELETE FROM refunds WHERE payment_intent = ?1 AND reason = 'dispute'").bind(pi),

@@ -24,16 +24,28 @@ export async function recordReveal(card, { seconds = 6, intro = 'わたしのポ
   out.width = W;
   out.height = H;
   const ctx = out.getContext('2d');
-  // ぼかした下絵は先に1回だけ作る（毎フレームぼかすと重い）
+  // ぼかした下絵は先に1回だけ作る（毎フレームぼかすと重い）。
+  // canvas の filter（blur）は古い iPhone の Safari で効かないので、小さく縮めてから引きのばしてぼかす
   const blurred = document.createElement('canvas');
   blurred.width = W;
   blurred.height = H;
   const bctx = blurred.getContext('2d');
-  bctx.filter = 'blur(28px)';
-  bctx.drawImage(card, 0, 0, W, H);
-  bctx.filter = 'none';
+  const tiny = document.createElement('canvas');
+  const mid = document.createElement('canvas');
+  [mid.width, mid.height] = [90, 160];
+  [tiny.width, tiny.height] = [27, 48];
+  for (const c of [mid, tiny]) c.getContext('2d').imageSmoothingQuality = 'high';
+  mid.getContext('2d').drawImage(card, 0, 0, 90, 160);
+  tiny.getContext('2d').drawImage(mid, 0, 0, 27, 48);
+  bctx.imageSmoothingEnabled = true;
+  bctx.imageSmoothingQuality = 'high';
+  bctx.drawImage(tiny, 0, 0, W, H);
   bctx.fillStyle = 'rgba(255,255,255,.25)';
   bctx.fillRect(0, 0, W, H);
+  [mid, tiny].forEach((c) => {
+    c.width = 0;
+    c.height = 0;
+  });
 
   const stream = out.captureStream(30);
   const recorder = new MediaRecorder(stream, { mimeType: type, videoBitsPerSecond: 4_000_000 });

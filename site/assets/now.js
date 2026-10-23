@@ -17,9 +17,9 @@ export const nowName = (index, now = Date.now()) => {
 export function nowCard(index) {
   const n = nowName(index);
   return `<section class="card now-name" data-now>
-    <p class="lead">いまの二つ名 <small>（${n.stamp}）</small></p>
-    <p class="now-word"><b>${esc(n.word)}</b>${esc(TYPES[index].label)}</p>
-    <p class="hint">${esc(nowNote(n))}</p>
+    <p class="lead">いまの二つ名 <small>（<span data-now-stamp>${n.stamp}</span>）</small></p>
+    <p class="now-word"><b data-now-word>${esc(n.word)}</b>${esc(TYPES[index].label)}</p>
+    <p class="hint" data-now-note>${esc(nowNote(n))}</p>
     <button class="btn sub small wide" data-now-card>いまのわたしを画像で保存</button>
   </section>`;
 }
@@ -95,6 +95,27 @@ export async function drawNowCard(index, now = Date.now()) {
   ctx.fillStyle = shade(t.color, 0.4);
   ctx.fillText(`${hostOf(SITE.origin)}  #${SITE.hashtag}`, W / 2, 1800);
   return canvas;
+}
+
+// 開いたままのページでも、言葉と時刻が古いまま残らないように、30秒ごとと、アプリから戻ってきたときに書きかえる
+let refresh = null;
+let timer = null;
+if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && refresh?.());
+export function keepNowFresh(index, gen, navNow) {
+  clearInterval(timer);
+  refresh = () => {
+    if (gen !== navNow()) {
+      clearInterval(timer);
+      refresh = null;
+      return;
+    }
+    const n = nowName(index);
+    app.querySelectorAll('[data-now-word]').forEach((el) => (el.textContent = n.word));
+    app.querySelectorAll('[data-now-stamp]').forEach((el) => (el.textContent = n.stamp));
+    app.querySelectorAll('[data-now-note]').forEach((el) => (el.textContent = nowNote(n)));
+    app.querySelectorAll('[data-now-line]').forEach((el) => (el.textContent = `いまは「${n.text}」`));
+  };
+  timer = setInterval(refresh, 30000);
 }
 
 // 「いまのわたしを画像で保存」。押した直後に結果のリンクをコピーしておく（ストーリーのリンクスタンプ用）

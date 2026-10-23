@@ -35,13 +35,39 @@ function vacationOf({ m, d }) {
   if (md >= 325 && md <= 406) return 'spring';
   return null;
 }
-// 祝日（日付が決まっているものと、ハッピーマンデー）。春分・秋分の日は年でずれるので入れていない
+// 祝日：日付が決まっているもの・ハッピーマンデー・春分と秋分（年ごとの表）に、振替休日と国民の休日を足す
 const FIXED_HOLIDAYS = [101, 211, 223, 429, 503, 504, 505, 811, 1103, 1123];
 const MONDAY_HOLIDAYS = [[1, 2], [7, 3], [9, 3], [10, 2]]; // [月, 第n月曜]
-function holiday({ m, d, w }) {
-  if (FIXED_HOLIDAYS.includes(m * 100 + d)) return true;
-  return w === 1 && MONDAY_HOLIDAYS.some(([mm, n]) => mm === m && Math.ceil(d / 7) === n);
+// 春分・秋分の日（国立天文台の暦要項・予測。表にない年は、よく当たる日付で代える）
+const EQUINOX = { 2026: [320, 923], 2027: [321, 923], 2028: [320, 922], 2029: [320, 923], 2030: [320, 923], 2031: [321, 923], 2032: [320, 922] };
+const holidayCache = new Map();
+function holidaysOf(y) {
+  if (holidayCache.has(y)) return holidayCache.get(y);
+  const day = (i) => new Date(Date.UTC(y, 0, 1 + i)); // その年の i 日目
+  const md = (dt) => (dt.getUTCMonth() + 1) * 100 + dt.getUTCDate();
+  const n = (Date.UTC(y + 1, 0, 1) - Date.UTC(y, 0, 1)) / 86400000;
+  const base = new Set([...FIXED_HOLIDAYS, ...(EQUINOX[y] || [320, 923])]);
+  for (let i = 0; i < n; i++) {
+    const dt = day(i);
+    if (dt.getUTCDay() === 1 && MONDAY_HOLIDAYS.some(([mm, k]) => mm === dt.getUTCMonth() + 1 && Math.ceil(dt.getUTCDate() / 7) === k)) base.add(md(dt));
+  }
+  const all = new Set(base);
+  for (let i = 0; i < n; i++) {
+    // 振替休日：日曜の祝日のあと、最初の祝日でない日
+    if (day(i).getUTCDay() === 0 && base.has(md(day(i)))) {
+      let j = i + 1;
+      while (j < n && all.has(md(day(j)))) j++;
+      if (j < n) all.add(md(day(j)));
+    }
+  }
+  for (let i = 1; i < n - 1; i++) {
+    // 国民の休日：祝日にはさまれた日（日曜をのぞく）
+    if (!all.has(md(day(i))) && day(i).getUTCDay() !== 0 && base.has(md(day(i - 1))) && base.has(md(day(i + 1)))) all.add(md(day(i)));
+  }
+  holidayCache.set(y, all);
+  return all;
 }
+const holiday = ({ y, m, d }) => holidaysOf(y).has(m * 100 + d);
 
 // いまの言葉と、次に変わる時刻（深夜は null）
 export function nowWord(now = Date.now()) {

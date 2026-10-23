@@ -5,7 +5,7 @@ import { TYPES, QUESTIONS, PARAM_QUESTIONS, CHAPTERS, PARAMS, PARAM_MAX, LOVE_TY
 import { judge, encodeResult, rankOf, paramLevel, LEVEL_NAMES } from './logic.js';
 import { charaSVG } from './chara.js';
 import { app, esc, store, track, loadStats, render, toast, navNow } from './ui.js';
-import { variant } from './ab.js';
+import { variant, abTrack } from './ab.js';
 
 // 選択肢は、いつも「控えめ → 全開」の順（点数の小さい順）に上から並べる。
 // 並びがばらばらだと、4つ全部を読んで頭の中で並べかえないと選べない（「選びにくい」という声があった）。
@@ -27,6 +27,8 @@ export const questionHint = (q, first = false) =>
   q.note ? `<p class="qhint">${esc(q.note)}</p>` : first ? '<p class="qhint">ぴったりがなくても、いちばん近いものでOK</p>' : '';
 
 const TOTAL = QUESTIONS.length + PARAM_QUESTIONS.length;
+// 読みこみ画面の棒は、パラメータの本当の数値ではなく、ランクの代表値で描く（数値は完全版で見せるもの）
+const RANK_BAR = { S: 92, A: 76, B: 55, C: 33, D: 15 };
 // 結果の直前に見せる「いま何を計算しているか」。本当にしている計算だけを書く（「AIが分析」などは書かない）
 const CALC_STEPS = {
   quick: [`${QUESTIONS.length}問の答えから4つの軸を計算中`, `${BASE_COUNT}タイプから照合中`, `隠しタイプ${HIDDEN.length}種類の条件をチェック中`],
@@ -212,9 +214,11 @@ function finish() {
   const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
   const steps = !reduce && !store.get('calcSeen', false) && variant('calc') === 'on' ? CALC_STEPS[s.mode] : null;
   if (steps) store.set('calcSeen', true);
+  // calc の分母：結果を見た（「計算中」を見せたかどうかは案で決まる）。動きを減らす設定の人は数えない
+  if (!reduce) abTrack('result');
   render(`<div class="loading">${s.mode === 'quick' ? 'ポンコツ成分を分析中…' : 'あなたのレポートを作成中…'}
     <div class="analyzing">${r.axisPct.map((p, k) => `<div><i style="--w:${p}%;animation-delay:${k * 0.18}s"></i></div>`).join('')}
-    ${r.params ? r.params.map((p, k) => `<div><i style="--w:${Math.max(p, 6)}%;animation-delay:${0.72 + k * 0.12}s"></i></div>`).join('') : ''}</div>
+    ${r.params ? r.params.map((p, k) => `<div><i style="--w:${RANK_BAR[rankOf(p)]}%;animation-delay:${0.72 + k * 0.12}s"></i></div>`).join('') : ''}</div>
     ${steps ? `<ul class="calc">${steps.map((t, k) => `<li style="--d:${((wait - 300) / steps.length / 1000) * (k + 1)}s">${esc(t)}</li>`).join('')}</ul>` : ''}</div>`);
   const pendingGroup = store.get('pendingGroup', null);
   setTimeout(() => {

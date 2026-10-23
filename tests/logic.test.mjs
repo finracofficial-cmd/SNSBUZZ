@@ -256,6 +256,8 @@ test('A/Bテスト：ブラウザとサーバーの定義が同じ。z検定の 
   const server = await import('../functions/_lib/experiments.js');
   assert.deepEqual(site.EXPERIMENTS, server.EXPERIMENTS);
   assert.deepEqual(site.AB_STEPS, server.AB_STEPS);
+  assert.deepEqual(site.METRICS, server.METRICS);
+  Object.keys(site.EXPERIMENTS).forEach((name) => assert.ok(site.metricsOf(name).every((st) => site.AB_STEPS.includes(st)), name));
   assert.equal(site.twoProportion(1, 10, 2, 10), null, '少なすぎるときは判断しない');
   assert.ok(Math.abs(site.twoProportion(50, 100, 50, 100) - 1) < 1e-6, '同じ割合なら p=1');
   // 30/1000 と 60/1000 は有意（p ≈ 0.0013）
@@ -315,6 +317,11 @@ test('いまの二つ名：深夜はカウントダウンなし。「次に変�
     assert.equal(nowWord(at - 60e3).word, n.word, '変わる直前までは同じ言葉');
   }
   assert.ok(words.size >= 14, `言葉の種類 ${words.size}`);
+  // 振替休日・国民の休日・春分・秋分は、休みの日の言葉になる（平日なら「授業中うわの空の」）
+  for (const day of ['2026-03-20', '2026-05-06', '2026-09-22', '2026-09-23', '2027-03-22']) {
+    assert.notEqual(nowWord(Date.parse(`${day}T10:30:00+09:00`)).word, '授業中うわの空の', day);
+  }
+  assert.equal(nowWord(Date.parse('2026-10-21T10:30:00+09:00')).word, '授業中うわの空の', 'ふつうの水曜');
   // 占いの言葉は使わない
   assert.ok(![...words].some((w) => /運勢|ラッキー|当たる|鑑定|占/.test(w)));
 });

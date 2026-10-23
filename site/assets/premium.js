@@ -233,9 +233,17 @@ async function claimIdOf(secret) {
 // おうちの人に送るリンクは作ってから7日で無効（おうちの人のページで販売しない）。
 // サーバーは支払いから7日間トークンを預かるので、端末は作ってから14日間まで確かめる。
 // 新しくお願いしても、前のお願い（期限内に払われたかもしれない）も確かめられるよう、2つまで残す
-const DAY = 24 * 3600 * 1000;
+const HOUR = 3600 * 1000;
+const DAY = 24 * HOUR;
 const LINK_DAYS = 7;
 const CLAIM_TTL = 14 * DAY;
+// リンクに入れる作成時刻（時間単位・36進数）と、期限の表示（「10/30 8:00まで」）
+const linkStamp = (at) => Math.floor(at / HOUR).toString(36);
+const linkMadeAt = (stamp) => (/^[0-9a-z]{1,7}$/.test(stamp || '') ? parseInt(stamp, 36) * HOUR : null);
+const untilText = (madeAt) => {
+  const d = new Date(madeAt + LINK_DAYS * DAY);
+  return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+};
 function pendingClaims() {
   const raw = store.get('claims', null) ?? [store.get('claim', null)].filter(Boolean);
   return (Array.isArray(raw) ? raw : [])
@@ -245,7 +253,8 @@ function pendingClaims() {
 
 async function askGuardian(s) {
   let claims = pendingClaims();
-  let c = claims.find((x) => Date.now() - x.at <= LINK_DAYS * DAY - DAY);
+  // 出し直すのは、期限まで2日以上あるリンクだけ（残りわずかのリンクを送らないように）
+  let c = claims.find((x) => Date.now() - Math.floor(x.at / HOUR) * HOUR <= (LINK_DAYS - 2) * DAY);
   if (!c) {
     const secret = randomSecret();
     c = { s: secret, rid: await claimIdOf(secret), at: Date.now() };
@@ -254,13 +263,13 @@ async function askGuardian(s) {
     store.set('claim', null);
   }
   // リンクには、作った日（期限の確認用）と、この端末のA/Bテストの案を入れる。結果や回答は入れない
-  const url = `${ORIGIN}/#/buy/${c.rid}/${Math.floor(c.at / DAY).toString(36)}/${abCode()}`;
+  const url = `${ORIGIN}/#/buy/${c.rid}/${linkStamp(c.at)}/${abCode()}`;
   const text = `「${SITE.quizName}」の完全版（${priceOf(s)}円）を買ってもらえませんか？ このリンクから支払うと、このスマホで読めるようになります`;
   track('paywall', 'ask');
   openModal(`
     <h2 class="sheet-title">おうちの人に払ってもらう</h2>
     <p>このリンクをおうちの人に送ってね。おうちの人のスマホで支払いが終わると、<b>このスマホで自動的に完全版が開きます</b>（このページを開いたままでも、あとで開いても大丈夫）。</p>
-    <p class="hint">おうちの人には、あなたの診断結果や回答は見えません。リンクは${new Date(c.at + LINK_DAYS * DAY).toLocaleDateString('ja-JP')}まで有効です。このスマホでしか受け取れないので、ほかの人に転送されても大丈夫です。</p>
+    <p class="hint">おうちの人には、あなたの診断結果や回答は見えません。リンクは${untilText(Math.floor(c.at / HOUR) * HOUR)}まで有効です。このスマホでしか受け取れないので、ほかの人に転送されても大丈夫です。</p>
     <div class="share-row">
       <button class="share-btn" data-ch="ask:link" data-copy="${esc(`${text}\n${url}`)}">コピー</button>
       <button class="share-btn" data-ch="ask:native" data-native-text="${esc(text)}" data-native-url="${esc(url)}">送る</button>
@@ -275,8 +284,19 @@ export async function viewBuyFor(rid, render, created = '', ab = '') {
   const s = await premiumStatus();
   if (gen !== navNow()) return;
   const plans = s.plans.filter((p) => p.available);
-  const madeOn = /^[0-9a-z]{1,6}$/.test(created) ? parseInt(created, 36) : null;
-  if (madeOn != null && Date.now() - madeOn * DAY > LINK_DAYS * DAY) {
+  const madeAt = linkMadeAt(created);
+  // 支払い済みのお願いなら、もう一度払わないように知らせる（支払い済みかどうかだけを聞く。トークンは返らない）
+  const status = await api(`claim?rid=${rid}`, { timeout: 4000 });
+  if (gen !== navNow()) return;
+  if (status?.paid) {
+    render(`<section class="card">
+      <h1 class="sheet-title">このお願いは、もう支払い済みです</h1>
+      <p>お子さまのスマホで、完全版が読めるようになっています。表示が変わらないときは、お子さまにページを開き直してもらってください。</p>
+      <p class="hint"><a href="#/legal">特定商取引法に基づく表記</a></p>
+    </section>`);
+    return;
+  }
+  if (madeAt != null && Date.now() - madeAt > LINK_DAYS * DAY) {
     render(`<section class="card">
       <h1 class="sheet-title">このリンクの期限が切れています</h1>
       <p>お願いのリンクは、作ってから${LINK_DAYS}日間だけ使えます。お手数ですが、お子さまにもう一度リンクを送ってもらってください。</p>
@@ -375,8 +395,15 @@ export const GIFT_MESSAGES = {
 };
 
 // プレゼントのリンクを開いたページ。受け取りはボタンを押してから（買った本人が確かめに開いても、消えないように）
-export function viewGift(g, { render, brand, foot }) {
-  const mine = !!lastingToken();
+export async function viewGift(g, { render, brand, foot }) {
+  const gen = navNow();
+  // 持っているトークンが、返金などでもう読めないものなら「持っていない」扱いにする
+  let mine = !!lastingToken();
+  if (mine) {
+    const check = await api('premium?i=0', { token: lastingToken() });
+    if (gen !== navNow()) return;
+    if (check?.status === 401 || check?.status === 403) mine = false;
+  }
   render(`${brand()}<section class="card center gift-page">
     <h1 class="sheet-title">完全版のプレゼントが届いています</h1>
     <p>${esc(SITE.quizName)}の完全版（くわしい診断のレポート全8章）を、友達が贈ってくれました。<b>受け取れるのは1人だけ</b>です。</p>
@@ -506,7 +533,7 @@ export async function completePurchase(sid, { fromThanks = false } = {}) {
   const res = await api(`unlock?sid=${encodeURIComponent(sid)}`, { timeout: 10000 });
   if (!res?.token) {
     // 返金済み・期限切れ・ほかの商品なら、もう確かめない
-    if (['revoked', 'expired', 'not_ours', 'bad_session'].includes(res?.error)) store.set('pendingSid', null);
+    if (['revoked', 'expired', 'not_ours', 'bad_session'].includes(res?.error) || res?.session === 'expired') store.set('pendingSid', null);
     return { ok: false, error: res?.error || 'network' };
   }
   store.set('premiumToken', res.token);
@@ -514,7 +541,8 @@ export async function completePurchase(sid, { fromThanks = false } = {}) {
   store.set('pendingSid', null);
   const back = store.get('returnHash', null);
   store.set('returnHash', null);
-  if (res.forChild) store.set('childPaidAt', Date.now());
+  // おうちの人の端末に、支払いを受けつけた印を残す（時間では消さない。完了の画面をあとで開き直しても「完了」と出す）
+  if (res.forChild) store.set('childPaid', { at: Date.now() });
   // returnHash がない＝購入を始めたのとは別のブラウザで /thanks/ が開いた
   store.set('afterPurchase', { forChild: !!res.forChild, plan: res.plan || 'solo', otherBrowser: fromThanks && !back });
   return { ok: true, url: res.forChild ? '/#/buy/done' : `/${back || '#/'}` };

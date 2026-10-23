@@ -10,7 +10,7 @@ import { drawStoryCard, drawLabelCard, canvasToBlob } from './card.js';
 import { drawCarousel, toFeed } from './carousel.js';
 import { textResult } from './textshare.js';
 import { canRecordVideo, recordReveal } from './video.js';
-import { nowCard, bindNowCard } from './now.js';
+import { nowCard, bindNowCard, keepNowFresh } from './now.js';
 import { pollCard, bindPoll } from './polls.js';
 import { exportPayload, importPayload } from './carryover.js';
 import { app, ORIGIN, esc, store, track, loadStats, render, toast, foot, brand, shareLinks, shareImageBlob, shareImageSet, openModal, closeModal, inAppHint, navNow, busy, copySilently, copyText, shareVideo } from './ui.js';
@@ -258,6 +258,7 @@ export async function viewResult(r, shareId) {
   app.querySelector('[data-group]').addEventListener('click', openGroupCreate);
   app.querySelector('[data-prof]').addEventListener('click', () => openProfileCard(r));
   bindNowCard(r.index, url);
+  keepNowFresh(r.index, gen, navNow);
   bindPoll(gen, navNow);
   bindSticker(r, url);
 }

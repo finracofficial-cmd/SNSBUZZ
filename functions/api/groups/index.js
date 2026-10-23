@@ -1,5 +1,5 @@
 // POST /api/groups {name} — グループ診断を作る。作った人には、メンバーを外したりグループを消したりできる管理キーを返す
-import { json, readJson, rateLimited, crossSite, hasNgWord, cleanText } from '../../_lib/http.js';
+import { json, readJson, rateLimited, crossSite, ngWordOf, cleanText } from '../../_lib/http.js';
 import { cleanup } from '../../_lib/purchase.js';
 
 const randomId = (n) =>
@@ -12,7 +12,8 @@ export async function onRequestPost({ request, env }) {
   const body = await readJson(request);
   const name = cleanText(body?.name, 20);
   if (!name) return json({ error: 'name' }, 400);
-  if (hasNgWord(name)) return json({ error: 'ng' }, 400);
+  const ng = ngWordOf(name);
+  if (ng) return json({ error: 'ng', word: ng }, 400);
   const id = randomId(8);
   const admin = randomId(16);
   await env.DB.prepare('INSERT INTO groups (id, name, admin, created_at) VALUES (?1, ?2, ?3, ?4)').bind(id, name, admin, Date.now()).run();

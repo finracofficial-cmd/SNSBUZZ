@@ -19,7 +19,8 @@ export async function onRequestGet({ request, env }) {
   if (!res.ok) return json({ error: 'stripe' }, res.status === 404 ? 404 : 502);
   const session = await res.json();
   if (!isOurSession(session)) return json({ error: 'not_ours' }, 404);
-  if (session.payment_status !== 'paid') return json({ error: 'unpaid' }, 402);
+  // 未払い。決済の画面が切れていれば（session: 'expired'）、端末はもう確かめに来なくてよい
+  if (session.payment_status !== 'paid') return json({ error: 'unpaid', session: session.status || '' }, 402);
   if (Date.now() - Number(session.created || 0) * 1000 > WINDOW) return json({ error: 'expired' }, 410);
   const p = await recordPurchase(env, session);
   if (p.refunded) return json({ error: 'revoked' }, 403);

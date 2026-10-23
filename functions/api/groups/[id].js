@@ -5,7 +5,7 @@
 //   POST   /api/groups/:id {secret, nick, code} — 参加・更新（保存するのは、かんたん診断の結果だけ）。締め切り中は新しく参加できない
 //   PATCH  /api/groups/:id {admin, locked} — 作った人が、参加を締め切る／再開する
 //   DELETE /api/groups/:id {secret} — 自分が抜ける ／ {admin, handle} — 作った人がメンバーを外す ／ {admin, all: true} — グループを消す
-import { json, readJson, rateLimited, crossSite, hasNgWord, cleanText, sameText, sha256Hex, RESULT_CODE, quickCode } from '../../_lib/http.js';
+import { json, readJson, rateLimited, crossSite, ngWordOf, cleanText, sameText, sha256Hex, RESULT_CODE, quickCode } from '../../_lib/http.js';
 
 const TTL = 90 * 24 * 3600 * 1000;
 const MAX_MEMBERS = 50;
@@ -56,7 +56,8 @@ export async function onRequestPost({ params, request, env }) {
   const nick = cleanText(body?.nick, 10) || 'ななし';
   const code = String(body?.code || '');
   if (!SECRET.test(secret) || !RESULT_CODE.test(code)) return json({ error: 'bad' }, 400);
-  if (hasNgWord(nick)) return json({ error: 'ng' }, 400);
+  const ng = ngWordOf(nick);
+  if (ng) return json({ error: 'ng', word: ng }, 400);
   const key = await memberKey(g.id, secret);
   const exists = await env.DB.prepare('SELECT 1 FROM members WHERE group_id = ?1 AND member_id = ?2').bind(g.id, key).first();
   if (exists) {

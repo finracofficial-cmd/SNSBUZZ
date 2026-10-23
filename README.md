@@ -97,7 +97,7 @@ npm run smoke      # スマホ幅で かんたん診断→くわしい診断→�
 
    `PREMIUM_SECRET`・`STRIPE_SECRET_KEY`・`STRIPE_PRICE_ID`・`SELLER_READY=1` がそろうと、販売が始まります。そろっていない間は「準備中」と表示されます（特商法の表記が仮のまま売り始めないため）。
 
-   Stripe のダッシュボードで Webhook を作ります。送り先は `https://<ドメイン>/api/stripe-webhook`、イベントは `checkout.session.completed`・`checkout.session.async_payment_succeeded`・`charge.refunded`・`charge.dispute.created`・`charge.dispute.closed` です。署名シークレットを `STRIPE_WEBHOOK_SECRET` に入れます。全額返金とチャージバックでは、その購入（ふたり用ならプレゼントを受け取った人も）が読めなくなります。一部返金では止めません。
+   Stripe のダッシュボードで Webhook を作ります。送り先は `https://<ドメイン>/api/stripe-webhook`、イベントは `checkout.session.completed`・`checkout.session.async_payment_succeeded`・`charge.refunded`・`charge.dispute.created`・`charge.dispute.updated`・`charge.dispute.closed` です。署名シークレットを `STRIPE_WEBHOOK_SECRET` に入れます。全額返金とチャージバックでは、その購入（ふたり用ならプレゼントを受け取った人も）が読めなくなります。一部返金と、カード会社からの問い合わせ（`warning_`）では止めません。
 
    公開後に一度、`curl -I 'https://<ドメイン>/thanks/?sid=x'` で `cache-control: no-store` と `referrer-policy: no-referrer` が付いているか確かめてください（`_headers` の `/thanks/*` が `/thanks/` そのものにも効いているか）。
 
