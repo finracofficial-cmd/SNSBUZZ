@@ -7,7 +7,8 @@ import { titleOf, rarityOf, priorDistribution, compatRanking, compatOf, axisLine
 import { charaSVG } from './chara.js';
 import { radarSVG } from './radar.js';
 import { drawStoryCard, drawLabelCard, canvasToBlob } from './card.js';
-import { app, ORIGIN, esc, store, track, loadStats, render, toast, foot, brand, shareLinks, shareImageBlob, openModal, inAppHint, navNow, busy } from './ui.js';
+import { drawCarousel } from './carousel.js';
+import { app, ORIGIN, esc, store, track, loadStats, render, toast, foot, brand, shareLinks, shareImageBlob, shareImageSet, openModal, inAppHint, navNow, busy } from './ui.js';
 import { invitePairBox, openInviteModal, openGroupCreate, openQuizCreate, friends } from './social.js';
 import { openProfileCard } from './profile.js';
 
@@ -93,6 +94,17 @@ function detailTeaser(r) {
   </section>`;
 }
 
+// 6枚まとめて保存（かんたん診断・くわしい診断の両方から使う）
+export function shareCarousel(button, r, text) {
+  return busy(button, async () => {
+    toast('6枚の画像をつくっています…');
+    const canvases = await drawCarousel(r);
+    const blobs = await Promise.all(canvases.map(canvasToBlob));
+    track('share', 'carousel');
+    await shareImageSet(blobs, { name: `ponkotsu-${typeNo(r.index)}`, text, alt: `${TYPES[r.index].label}の結果` });
+  });
+}
+
 // ---------- かんたん診断の結果 ----------
 export async function viewResult(r, shareId) {
   const gen = navNow();
@@ -122,6 +134,7 @@ export async function viewResult(r, shareId) {
     ${invitePairBox(r)}
     <section class="share">
       <button class="btn type" data-card="story">画像を保存してストーリーに投稿</button>
+      <button class="btn sub" data-carousel>6枚まとめて保存（TikTok・インスタの投稿用）</button>
       ${shareLinks({ text, url, channelPrefix: '' }).html}
       ${inAppHint()}
       <div class="btn-row">
@@ -165,6 +178,8 @@ export async function viewResult(r, shareId) {
       }),
     ),
   );
+  const carouselButton = app.querySelector('[data-carousel]');
+  carouselButton.addEventListener('click', () => shareCarousel(carouselButton, r, `${text}\n${url}`));
   app.querySelectorAll('[data-invite]').forEach((b) => b.addEventListener('click', () => openInviteModal(r)));
   app.querySelector('[data-quiz-create]').addEventListener('click', () => openQuizCreate(r));
   app.querySelector('[data-group]').addEventListener('click', openGroupCreate);
@@ -204,7 +219,7 @@ export function viewType(index) {
       <p class="catch-line">${esc(t.catch)}</p>
       <p class="praise">${esc(t.praise)}</p>
       <p class="roast"><span>${esc(t.roast)}</span></p>
-      <button class="btn" data-go="#/q">${mine ? 'もう一回診断する' : 'あなたは何タイプ？診断する（無料・1分）'}</button>
+      <button class="btn" data-go="#/q">${mine ? 'もう一回診断する' : 'あなたも診断する（無料・1分）'}</button>
     </section>
     <nav class="secnav" aria-label="もくじ">${NAV.map(([id, l]) => `<button data-scroll="${id}">${l}</button>`).join('')}</nav>
     <section class="card" id="sec-self"><h2>基本の性格</h2>

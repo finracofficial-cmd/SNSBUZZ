@@ -123,6 +123,15 @@ export function nicknameOf(params, start = 0) {
   return { param: k, side, text: PARAMS[k][side] };
 }
 
+// RPG風の「必殺技」（いちばん高いパラメータ）と「弱点」（いちばん低いパラメータ）。ランクと同じく無料
+export function skillsOf(r) {
+  if (!r.params) return null;
+  const order = r.params.map((v, k) => [v, k]).sort((x, y) => y[0] - x[0] || x[1] - y[1]);
+  const hi = order[0];
+  const lo = order[order.length - 1];
+  return hi[0] === lo[0] ? null : { skill: PARAMS[hi[1]], weak: PARAMS[lo[1]], hiRank: rankOf(hi[0]), loRank: rankOf(lo[0]) };
+}
+
 export const fullName = (r) => (r.nickname ? `${r.nickname.text}${TYPES[r.index].label}` : TYPES[r.index].label);
 
 // ---------- 軸ごとの一言（振れ幅で3段階） ----------

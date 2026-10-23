@@ -472,3 +472,16 @@ fieldset.age legend { font-size: 13px; font-weight: 800; padding: 0 6px; }
 .skills .chip { align-self: flex-start; font-size: 11px; }
 .skills b { font-size: 14px; line-height: 1.4; }
 .skills small { font-size: 11px; color: var(--sub); }
+
+/* まとめて保存（カルーセル）の一覧 */
+.image-set { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 8px 0; }
+.image-set img { width: 100%; height: auto; border-radius: 8px; }
+
+/* 静的に書き出したページ（全タイプ一覧・タイプページ） */
+.type-links { columns: 2; margin: 0; padding-left: 1.2em; font-size: 14px; line-height: 1.9; }
+.type-list { display: grid; gap: 10px; }
+.type-card { display: flex; gap: 12px; align-items: center; text-decoration: none; color: var(--ink); margin: 0; }
+.type-card svg { flex: none; }
+.type-card small { display: block; color: var(--sub); font-size: 11px; }
+.type-card b { display: block; font-size: 17px; }
+.type-card span { display: block; font-size: 13px; color: var(--sub); }

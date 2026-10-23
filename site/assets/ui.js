@@ -210,6 +210,36 @@ export const inAppBrowser = () => /Instagram|FBAN|FBAV|Line\/|TikTok|BytedanceWe
 export const inAppHint = () =>
   inAppBrowser() ? '<p class="hint inapp">画像がうまく保存できないときは、右上の「…」から「ブラウザで開く」を選んでね</p>' : '';
 
+// Instagram ストーリーの「Add Yours」でお題を作ると、見た人が同じお題で投稿をつなげてくれる
+const ADD_YOURS = `<p class="hint">Instagram のストーリーなら「Add Yours」スタンプでお題「#わたしのポンコツ」を作ると、友達も結果をつなげて投稿できるよ</p>`;
+
+// 複数の画像をまとめて共有シートへ（TikTok のフォトモード・Instagram のカルーセル用）。
+// 共有できない端末では、1枚ずつ長押しで保存できるように並べて表示する
+export async function shareImageSet(blobs, { name, text, alt }) {
+  if (blobs.some((b) => !b)) {
+    toast('画像を作れませんでした。もう一度ためしてね');
+    return;
+  }
+  const files = blobs.map((b, i) => new File([b], `${name}-${i + 1}.png`, { type: 'image/png' }));
+  if (navigator.canShare?.({ files })) {
+    try {
+      await navigator.share({ files, text });
+      return;
+    } catch (e) {
+      if (e.name === 'AbortError') return;
+    }
+  }
+  const urls = blobs.map((b) => URL.createObjectURL(b));
+  openModal(
+    `<h2 class="sheet-title">${blobs.length}枚の画像</h2>
+     <p class="hint">1枚ずつ長押しして保存 → TikTok のフォトモードや Instagram の投稿で、順番どおりに選んでね</p>
+     ${ADD_YOURS}
+     <div class="image-set">${urls.map((u, i) => `<img src="${u}" alt="${esc(alt)}（${i + 1}/${blobs.length}）">`).join('')}</div>${inAppHint()}
+     <button class="btn sub" data-close>とじる</button>`,
+    () => urls.forEach((u) => URL.revokeObjectURL(u)),
+  );
+}
+
 // 画像を共有シートへ。だめなら長押し保存用に表示する
 export async function shareImageBlob(blob, { name, text, alt }) {
   if (!blob) {
@@ -228,7 +258,7 @@ export async function shareImageBlob(blob, { name, text, alt }) {
   const objectUrl = URL.createObjectURL(blob);
   openModal(
     `<img src="${objectUrl}" alt="${esc(alt)}">
-     <p class="hint">画像を長押しして保存 → ストーリーや動画で投稿してね</p>${inAppHint()}
+     <p class="hint">画像を長押しして保存 → ストーリーや動画で投稿してね</p>${ADD_YOURS}${inAppHint()}
      <button class="btn sub" data-close>とじる</button>`,
     () => URL.revokeObjectURL(objectUrl),
   );

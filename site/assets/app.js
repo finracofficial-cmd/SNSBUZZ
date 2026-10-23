@@ -204,7 +204,9 @@ async function routeInner() {
     route();
   } else if (view === 'about') viewAbout();
   else if (view === 'legal') await viewLegal();
-  else if (!location.hash && page === 'thanks') {
+  else if (!location.hash && page === 'types') {
+    // 全タイプ一覧は、書き出した静的なページをそのまま使う
+  } else if (!location.hash && page === 'thanks') {
     const params = new URLSearchParams(location.search);
     if (params.has('canceled')) location.replace(cancelPurchase());
     else await viewThanks(params.get('sid') || '');

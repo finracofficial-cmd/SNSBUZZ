@@ -3,7 +3,7 @@ import { rateLimited, crossSite } from '../_lib/http.js';
 
 const SHARE = [
   'x', 'line', 'link', 'native', 'invite', 'quiz',
-  'image', 'label-image', 'gold-image', 'pair-image', 'nick-image', 'status-image', 'prof-image',
+  'image', 'label-image', 'gold-image', 'pair-image', 'nick-image', 'status-image', 'prof-image', 'carousel',
 ];
 const ALLOWED = {
   start: () => '',

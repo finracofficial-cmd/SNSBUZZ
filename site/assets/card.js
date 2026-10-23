@@ -5,7 +5,7 @@ import { charaDataURL, shade, tint } from './chara.js';
 import { statValues, statLabels } from './radar.js';
 
 export const FONT = '"M PLUS Rounded 1c", "Hiragino Maru Gothic ProN", "Hiragino Sans", "Noto Sans JP", sans-serif';
-const INK = '#3B2F33';
+export const INK = '#3B2F33';
 const NO_LINE_END = '「『（(“';
 const NO_LINE_START = '。、，．・ー」』）)！？!?〜…ぁぃぅぇぉっゃゅょァィゥェォッャュョ%％';
 
@@ -21,7 +21,7 @@ export async function ensureFonts(text) {
   }
 }
 
-function loadImage(src) {
+export function loadImage(src) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => resolve(img);
@@ -61,7 +61,7 @@ function greedy(ctx, pieces, maxWidth) {
   return lines;
 }
 
-function wrap(ctx, text, maxWidth, balance = true) {
+export function wrap(ctx, text, maxWidth, balance = true) {
   const pieces = segmenter ? Array.from(segmenter.segment(text), (s) => s.segment) : Array.from(text);
   const lines = greedy(ctx, pieces, maxWidth);
   if (!balance || lines.length < 2) return lines;
@@ -76,7 +76,7 @@ function wrap(ctx, text, maxWidth, balance = true) {
   return greedy(ctx, pieces, hi);
 }
 
-function roundRect(ctx, x, y, w, h, r) {
+export function roundRect(ctx, x, y, w, h, r) {
   ctx.beginPath();
   ctx.moveTo(x + r, y);
   ctx.arcTo(x + w, y, x + w, y + h, r);
@@ -86,7 +86,7 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
-function fitFont(ctx, text, weight, start, min, maxWidth) {
+export function fitFont(ctx, text, weight, start, min, maxWidth) {
   let size = start;
   do {
     ctx.font = `${weight} ${size}px ${FONT}`;
@@ -96,7 +96,7 @@ function fitFont(ctx, text, weight, start, min, maxWidth) {
   return size;
 }
 
-const hostOf = (origin) => origin.replace(/^https?:\/\//, '').replace(/\/$/, '');
+export const hostOf = (origin) => origin.replace(/^https?:\/\//, '').replace(/\/$/, '');
 
 // ストーリーズ・TikTok用 1080×1920
 export async function drawStoryCard({ index, purity, title, rarity, gold = false, nickname = '', loveName = '' }) {
@@ -401,7 +401,7 @@ function frame(ctx, W, H, color) {
   ctx.stroke();
 }
 
-function newCanvas(W, H) {
+export function newCanvas(W, H) {
   const canvas = document.createElement('canvas');
   canvas.width = W;
   canvas.height = H;

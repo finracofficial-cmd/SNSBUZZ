@@ -97,6 +97,12 @@ await shot(a, '03-quick-result');
 check(await a.$('.teaser-card'), 'かんたん診断の結果に、くわしい診断の入口がない');
 await a.click('[data-card="story"]');
 await saveModalImage(a, '04-story-card');
+// 6枚まとめて保存（共有シートが使えない環境では、6枚が並んだ画面になる）
+await a.click('[data-carousel]');
+await a.waitForSelector('.modal .image-set img', { timeout: 15000 });
+check((await a.locator('.modal .image-set img').count()) === 6, 'まとめて保存の画像が6枚ない');
+await shot(a, '04-carousel', false);
+await a.click('.modal [data-close]');
 await a.click('[data-card="label"]');
 await saveModalImage(a, '04-label-card');
 await a.click('[data-prof]');

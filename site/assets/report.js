@@ -4,7 +4,7 @@
 //   モザイクの下には本物の文章を置かない（同じくらいの長さのダミー文字をぼかしている）。
 import { SITE } from './config.js';
 import { TYPES, AXES, PARAMS, PARAM_TEXT, LOVE_TYPES, isHidden, typeNo } from './data.js';
-import { titleOf, rarityOf, paramLevel, rankOf, LEVEL_NAMES, fullName } from './logic.js';
+import { titleOf, rarityOf, paramLevel, rankOf, LEVEL_NAMES, fullName, skillsOf } from './logic.js';
 import { charaSVG, shade } from './chara.js';
 import { radarSVG, statValues, statLabels } from './radar.js';
 import { drawStoryCard, drawStatusCard, canvasToBlob } from './card.js';
@@ -12,6 +12,7 @@ import { app, ORIGIN, esc, track, loadStats, render, toast, foot, brand, shareLi
 import { openPaywall, fetchPremium, hasPremium, previewUnlocked, watchClaim, premiumStatus, maybeShowAfterPurchase, restorePurchase, hasGift, openGift, priceOf } from './premium.js';
 import { openInviteModal, openGroupCreate, invitePairBox, openQuizCreate } from './social.js';
 import { openProfileCard } from './profile.js';
+import { shareCarousel } from './result.js';
 
 const typePath = (index) => `#/t/${typeNo(index).toLowerCase()}`;
 
@@ -51,13 +52,6 @@ function chapter(no, title, body, { free = false, locked = false } = {}) {
   </section>`;
 }
 
-// RPG風の「必殺技」（いちばん高いパラメータ）と「弱点」（いちばん低いパラメータ）。ランクと同じく無料
-export function skillsOf(r) {
-  const order = r.params.map((v, k) => [v, k]).sort((x, y) => y[0] - x[0] || x[1] - y[1]);
-  const hi = order[0];
-  const lo = order[order.length - 1];
-  return hi[0] === lo[0] ? null : { skill: PARAMS[hi[1]], weak: PARAMS[lo[1]], hiRank: rankOf(hi[0]), loRank: rankOf(lo[0]) };
-}
 function skillsBox(r) {
   const s = skillsOf(r);
   if (!s) return '';
@@ -191,6 +185,7 @@ export async function viewReport(r, shareId) {
     ${invitePairBox(r)}
     <section class="share">
       <button class="btn type" data-card="nick">二つ名カードを保存</button>
+      <button class="btn sub" data-carousel>6枚まとめて保存（TikTok・インスタの投稿用）</button>
       ${shareLinks({ text, url, channelPrefix: '' }).html}
       ${inAppHint()}
       <div class="btn-row">
@@ -238,6 +233,8 @@ export async function viewReport(r, shareId) {
       });
     }
   });
+  const carouselButton = app.querySelector('[data-carousel]');
+  carouselButton.addEventListener('click', () => shareCarousel(carouselButton, r, `${text}\n${url}`));
   app.querySelectorAll('[data-invite]').forEach((b) => b.addEventListener('click', () => openInviteModal(r)));
   app.querySelector('[data-quiz-create]').addEventListener('click', () => openQuizCreate(r));
   app.querySelector('[data-group]').addEventListener('click', openGroupCreate);

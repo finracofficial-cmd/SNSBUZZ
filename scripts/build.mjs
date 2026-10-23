@@ -5,10 +5,13 @@
 //   /p/     ふたりの相性
 //   /g/     グループ診断
 //   /thanks/ 完全版の購入後に戻ってくるページ
+//   /types/ 全タイプ一覧（検索エンジン向けの入口）
+// タイプページ・一覧・トップには、中身を静的なHTMLとして書き出す（scripts/prerender.mjs）
 import fs from 'node:fs';
 import path from 'node:path';
 import { SITE } from '../site/assets/config.js';
 import { TYPES, BASE_COUNT, typeNo } from '../site/assets/data.js';
+import { typeBody, typesBody, homeBody, breadcrumbLd } from './prerender.mjs';
 
 const src = path.resolve('site');
 const dist = path.resolve('dist');
@@ -19,9 +22,10 @@ const origin = SITE.origin.replace(/\/$/, '');
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 const template = fs.readFileSync(path.join(src, 'index.html'), 'utf8');
 
-const meta = ({ title, description, image, url, noindex }) => `<!--META-->
+const meta = ({ title, description, image, url, noindex, ld }) => `<!--META-->
 <title>${esc(title)}</title>
 <meta name="description" content="${esc(description)}">
+<link rel="canonical" href="${url}">${ld ? `\n<script type="application/ld+json">${ld}</script>` : ''}
 <meta property="og:type" content="website">
 <meta property="og:title" content="${esc(title)}">
 <meta property="og:description" content="${esc(description)}">
@@ -30,28 +34,40 @@ const meta = ({ title, description, image, url, noindex }) => `<!--META-->
 <meta name="twitter:card" content="summary_large_image">${noindex ? '\n<meta name="robots" content="noindex">' : ''}
 <!--/META-->`;
 
-function page(dir, m, { type = '', kind = '' } = {}) {
+function page(dir, m, { type = '', kind = '', body = '' } = {}) {
   const depth = dir ? dir.split('/').length : 0;
   const html = template
     .replace(/<!--META-->[\s\S]*?<!--\/META-->/, meta(m))
     .replaceAll('"./assets/', `"${'../'.repeat(depth) || './'}assets/`)
-    .replace('<body data-type="" data-page="">', `<body data-type="${type}" data-page="${kind}">`);
+    .replace('<body data-type="" data-page="">', `<body data-type="${type}" data-page="${kind}">`)
+    .replace('<main id="app" aria-live="polite"></main>', `<main id="app" aria-live="polite">${body}</main>`);
   fs.mkdirSync(path.join(dist, dir), { recursive: true });
   fs.writeFileSync(path.join(dist, dir, 'index.html'), html);
 }
 
 const topDescription = '12問・約1分でわかる、あなたの“愛すべきポンコツ”タイプ。16タイプ＋隠し4タイプ。くわしい診断で二つ名と恋愛タイプも。';
-page('', { title: `${SITE.quizName}｜${SITE.name}`, description: topDescription, image: `${origin}/og/top.png`, url: `${origin}/` });
+page('', { title: `${SITE.quizName}｜${SITE.name}`, description: topDescription, image: `${origin}/og/top.png`, url: `${origin}/` }, { body: homeBody() });
+page('types', {
+  title: `全${BASE_COUNT}タイプ一覧｜${SITE.quizName}`,
+  description: `${SITE.quizName}の全${BASE_COUNT}タイプ。性格・恋愛・友達・学校・トリセツまで、タイプごとに解説しています。`,
+  image: `${origin}/og/top.png`,
+  url: `${origin}/types/`,
+  ld: breadcrumbLd(origin, [[SITE.name, '/'], ['全タイプ一覧', '/types/']]),
+}, { kind: 'types', body: typesBody() });
 
-const urls = [`${origin}/`];
+const urls = [`${origin}/`, `${origin}/types/`];
 TYPES.forEach((t, i) => {
   const no = typeNo(i).toLowerCase();
+  const hidden = i >= BASE_COUNT;
   page(`t/${no}`, {
     title: `${t.label}｜${SITE.quizName}`,
     description: `${t.praise}${t.roast} あなたは何タイプ？`,
     image: `${origin}/og/${no}.png`,
     url: `${origin}/t/${no}/`,
-  }, { type: no });
+    // 隠しタイプは検索に出さず、中身も書き出さない
+    noindex: hidden,
+    ld: hidden ? '' : breadcrumbLd(origin, [[SITE.name, '/'], ['全タイプ一覧', '/types/'], [t.label, `/t/${no}/`]]),
+  }, { type: no, body: hidden ? '' : typeBody(i) });
   page(`i/${no}`, {
     title: `相性診断のおさそい｜${SITE.quizName}`,
     description: `「${t.label}」の友達から、ふたりの相性診断が届いています。12問に答えると相性がわかります。`,
