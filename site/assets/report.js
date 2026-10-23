@@ -12,7 +12,7 @@ import { app, ORIGIN, esc, track, loadStats, render, toast, foot, brand, shareLi
 import { openPaywall, fetchPremium, hasPremium, previewUnlocked, watchClaim, premiumStatus, maybeShowAfterPurchase, restorePurchase, hasGift, openGift, priceOf } from './premium.js';
 import { openInviteModal, openGroupCreate, invitePairBox, openQuizCreate } from './social.js';
 import { openProfileCard } from './profile.js';
-import { shareCarousel } from './result.js';
+import { shareCarousel, shareUrl } from './result.js';
 import { variant, abTrack } from './ab.js';
 
 const typePath = (index) => `#/t/${typeNo(index).toLowerCase()}`;
@@ -160,7 +160,7 @@ export async function viewReport(r, shareId) {
   const title = titleOf(r.purity);
   const love = LOVE_TYPES[r.love];
   const name = fullName(r);
-  const url = `${ORIGIN}/t/${typeNo(r.index).toLowerCase()}/?s=${shareId}`;
+  const url = shareUrl(r, shareId);
   const sk = skillsOf(r);
   const text = `【${name}】だった！ 恋愛は「${love.name}」${sk ? `\n必殺技「${sk.skill.skill}」／弱点「${sk.weak.weak}」` : ''}\n#${SITE.hashtag} あなたの二つ名は？`;
   await restorePurchase();

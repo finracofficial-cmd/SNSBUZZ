@@ -4,13 +4,13 @@ import { EXPERIMENTS, AB_STEPS } from '../_lib/experiments.js';
 
 const SHARE = [
   'x', 'line', 'link', 'native', 'invite', 'quiz',
-  'image', 'label-image', 'gold-image', 'pair-image', 'nick-image', 'status-image', 'prof-image', 'carousel', 'wallpaper',
+  'image', 'label-image', 'gold-image', 'pair-image', 'nick-image', 'status-image', 'prof-image', 'carousel', 'wallpaper', 'text',
 ];
 const ALLOWED = {
   start: () => '',
   done: (v) => (/^(\d|1\d)$/.test(v) ? v : null),
   share: (v) => (SHARE.includes(v) ? v : null),
-  ref: () => '',
+  ref: (v) => (v === 'f' ? 'f' : ''),
   detail: (v) => (['start', 'done'].includes(v) ? v : null),
   paywall: (v) => (['view', 'cta', 'ask'].includes(v) ? v : null),
   quiz: (v) => (['create', 'answer', 'done'].includes(v) ? v : null),

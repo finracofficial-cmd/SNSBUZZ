@@ -214,6 +214,23 @@ await a.goto(`${base}/${backUrl.hash}`);
 await a.waitForSelector('ol.board li');
 await shot(a, '15-quiz-board');
 
+// ---------- 3人目：ふつうのシェアURL（結果入り）から来ると、診断後にシェアした人との相性が出る ----------
+await a.goto(`${base}/#/r/${mineQuick.code}/${mineQuick.shareId}`);
+await a.waitForSelector('.share-row [data-copy]');
+const quickShare = await a.getAttribute('.share-row [data-copy]', 'data-copy');
+const shareUrl = new URL(quickShare.split('\n').pop());
+check(shareUrl.searchParams.get('f') === mineQuick.code.split('~').slice(0, 2).join('~'), `シェアURLに結果が入っていない: ${shareUrl}`);
+check(!shareUrl.searchParams.has('n'), 'シェアURLに名前が入っている');
+const c = await phone();
+await c.goto(`${base}${shareUrl.pathname}${shareUrl.search}`);
+await c.waitForSelector('.invite', { timeout: 5000 });
+await shot(c, '15b-share-landing', false);
+await c.click('.invite [data-go="#/q"]');
+await answer(c, 12, (i) => (i * 3 + 1) % 4);
+await c.waitForSelector('.pairbox', { timeout: 8000 });
+check((await c.textContent('.pairbox h2')).includes('シェアしてくれた友達'), 'シェアURLから来た人に相性が出ない');
+await shot(c, '15c-share-pair');
+
 // 図鑑・タイプページ・隠しタイプ
 await b.goto(`${base}/#/zukan`);
 await b.waitForTimeout(300);

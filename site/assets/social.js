@@ -42,13 +42,42 @@ export function receiveInvite(params) {
   return true;
 }
 
-export function inviteBanner() {
+// シェアURL（/t/NN/?f=..）から来たとき：シェアした人の結果を、名前なしのおさそいとして保存する
+export function receiveShare(params) {
+  const code = params.get('f');
+  const r = decodeResult(code);
+  if (!r || r.mode !== 'quick') return false;
+  // 自分のシェアを自分で開いたときは何もしない。名前つきのおさそいがあれば、そちらを残す
+  const mine = store.get('mineQuick', null);
+  if (mine && mine.code === code) return false;
+  if (store.get('invite', null)?.name) return false;
+  store.set('invite', { name: '', code, via: 'share' });
+  track('ref', 'f');
+  return true;
+}
+
+const inviterName = (inv) => (inv.name ? `${inv.name}さん` : 'シェアしてくれた友達');
+
+export function inviteBanner({ cta = false } = {}) {
   const inv = store.get('invite', null);
   const r = inv && decodeResult(inv.code);
   if (!r) return '';
+  const mine = store.get('mine', null);
+  const mineResult = mine?.code && decodeResult(mine.code);
+  const text = inv.name
+    ? `<b>${esc(inv.name)}さん</b>（${esc(TYPES[r.index].label)}）から<br>相性診断のおさそいが届いています`
+    : mineResult
+      ? `このリンクを送ってくれた友達は<b>${esc(TYPES[r.index].label)}</b>。あなたとの相性は？`
+      : `このリンクを送ってくれた友達（<b>${esc(TYPES[r.index].label)}</b>）との相性も、診断するとわかる`;
+  // 診断を終えていれば、すぐ相性へ。まだなら診断へ
+  const button = !cta
+    ? ''
+    : mineResult
+      ? `<a class="btn small" href="#/pair/${esc(inv.code)}/${esc(quickCodeOf(mine.code))}/${encodeURIComponent(inv.name || '友達')}/${encodeURIComponent('わたし')}">相性を見る</a>`
+      : '<button class="btn small" data-go="#/q">診断する（12問・約1分）</button>';
   return `<div class="invite">
     <div class="invite-chara">${charaSVG(r.index, { size: 72 })}</div>
-    <div><b>${esc(inv.name)}さん</b>（${esc(TYPES[r.index].label)}）から<br>相性診断のおさそいが届いています</div>
+    <div>${text}${button}</div>
   </div>`;
 }
 
@@ -58,16 +87,21 @@ export function invitePairBox(mine) {
   const other = inv && decodeResult(inv.code);
   if (!other) return '';
   const c = compatOf(mine, other);
+  const who = inviterName(inv);
+  // 相性の結果を、おさそいをくれた人へ送り返す（LINE）。相手が開くと、ふたりの相性ページになる
+  const back = `${ORIGIN}/p/?${new URLSearchParams({ a: quickCodeOf(encodeResult(mine)), b: quickCodeOf(inv.code), na: store.get('nick', '') || '友達', nb: inv.name || '' })}`;
+  const backText = `診断したよ！ ふたりの相性は${c.score}%「${c.rank}」だった #${SITE.hashtag}`;
   return `<section class="card pairbox">
-    <h2>${esc(inv.name)}さんとの相性</h2>
+    <h2>${esc(who)}との相性</h2>
     <div class="pair-row">
       <div>${charaSVG(mine.index, { size: 84 })}<small>あなた</small></div>
       <div class="pair-score"><strong>${c.score}%</strong><span>${esc(c.rank)}</span></div>
-      <div>${charaSVG(other.index, { size: 84 })}<small>${esc(inv.name)}さん</small></div>
+      <div>${charaSVG(other.index, { size: 84 })}<small>${esc(who)}</small></div>
     </div>
     <p>${esc(c.good)}。${c.care ? `ただし、${esc(c.care)}。` : ''}</p>
     <div class="btn-row">
-      <a class="btn sub small" href="#/pair/${encodeResult(other)}/${encodeResult(mine)}/${encodeURIComponent(inv.name)}/${encodeURIComponent('わたし')}">ふたりの相性をくわしく</a>
+      <a class="btn sub small" href="#/pair/${encodeResult(other)}/${encodeResult(mine)}/${encodeURIComponent(inv.name || '友達')}/${encodeURIComponent('わたし')}">ふたりの相性をくわしく</a>
+      <a class="btn small" data-ch="pairback:line" href="https://line.me/R/share?text=${encodeURIComponent(`${backText}\n${back}`)}" target="_blank" rel="noopener">LINEで相性を送り返す</a>
     </div>
   </section>`;
 }

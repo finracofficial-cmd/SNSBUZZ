@@ -3,19 +3,22 @@
 // タイプの読みもの（性格・恋愛・友達・学校・トリセツ）はタイプページにまとめる。
 import { SITE } from './config.js';
 import { AXES, TYPES, HIDDEN, BASE_COUNT, PARAMS, isHidden, typeNo } from './data.js';
-import { titleOf, rarityOf, priorDistribution, compatRanking, compatOf, axisLine, decodeResult, encodeResult } from './logic.js';
+import { titleOf, rarityOf, priorDistribution, compatRanking, compatOf, axisLine, decodeResult, encodeResult, quickCodeOf } from './logic.js';
 import { charaSVG } from './chara.js';
 import { radarSVG } from './radar.js';
 import { drawStoryCard, drawLabelCard, canvasToBlob } from './card.js';
 import { drawCarousel } from './carousel.js';
 import { app, ORIGIN, esc, store, track, loadStats, render, toast, foot, brand, shareLinks, shareImageBlob, shareImageSet, openModal, inAppHint, navNow, busy } from './ui.js';
-import { invitePairBox, openInviteModal, openGroupCreate, openQuizCreate, friends } from './social.js';
+import { invitePairBox, inviteBanner, openInviteModal, openGroupCreate, openQuizCreate, friends } from './social.js';
 import { openProfileCard } from './profile.js';
 
 const noLabel = (index) => (isHidden(index) ? `隠しタイプ ${typeNo(index)}` : `No.${typeNo(index)}`);
 export const typePath = (index) => `#/t/${typeNo(index).toLowerCase()}`;
 
-const shareUrl = (index, shareId) => `${ORIGIN}/t/${typeNo(index).toLowerCase()}/?s=${shareId}`;
+// シェアURLには、かんたん診断の結果（タイプと4軸の合計だけ）を入れる。
+// 開いた人が診断すると、シェアした人との相性が自動で出る（名前は入れない）
+export const shareUrl = (r, shareId) =>
+  `${ORIGIN}/t/${typeNo(r.index).toLowerCase()}/?${new URLSearchParams({ s: shareId, f: quickCodeOf(encodeResult(r)) })}`;
 // 「でも…」で始まる痛い一行は、それだけだと前の文が欠けて見えるので、頭の「でも」を外して使う
 export const roastAlone = (t) => t.roast.replace(/^でも、?/, '');
 function shareText(r) {
@@ -117,7 +120,7 @@ export async function viewResult(r, shareId) {
   let rarity = rarityOf(r.index, null);
   const ura = TYPES[r.ura.index];
   const text = shareText(r);
-  const url = shareUrl(r.index, shareId);
+  const url = shareUrl(r, shareId);
   const boardCount = store.get('quizScores', []).length;
   render(`
     ${brand()}
@@ -219,6 +222,7 @@ export function viewType(index) {
   const unlocked = !isHidden(index) || unlockedHidden().has(index) || document.body.dataset.type === typeNo(index).toLowerCase();
   if (!unlocked) return false;
   render(`
+    ${inviteBanner({ cta: true })}
     ${brand()}
     <section class="result">
       <span class="no">${noLabel(index)}</span>

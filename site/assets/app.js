@@ -11,6 +11,7 @@ import { viewReport } from './report.js';
 import { viewAdmin } from './admin.js';
 import {
   receiveInvite,
+  receiveShare,
   inviteBanner,
   viewPair,
   viewGroup,
@@ -243,6 +244,8 @@ document.getElementById('modal').addEventListener('click', delegate);
   const params = new URLSearchParams(location.search);
   const page = document.body.dataset.page;
   if (params.has('s')) track('ref', '1');
+  // シェアURL（/t/NN/?s=..&f=..）から来た：シェアした人との相性を、診断後に出せるようにする
+  if (document.body.dataset.type && !location.hash && params.has('f')) receiveShare(params);
   if (page === 'invite' && !location.hash && receiveInvite(params)) {
     history.replaceState(null, '', `${location.pathname}#/`);
   }
