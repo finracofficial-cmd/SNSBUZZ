@@ -155,6 +155,16 @@ await a.fill('#pf-like', 'いちごミルク');
 await a.fill('#pf-word', 'なかよくしてね');
 await a.click('#pf-go');
 await saveModalImage(a, '04-profile-card');
+// シール帳用のシール（QR のライブラリは、押したときだけ別のファイルから読む）
+await a.click('[data-sticker]');
+await a.waitForSelector('.modal .sheet img', { timeout: 15000 });
+const stickerSize = await a.evaluate(() => {
+  const img = document.querySelector('.modal .sheet img');
+  return img.complete ? `${img.naturalWidth}x${img.naturalHeight}` : new Promise((r) => (img.onload = () => r(`${img.naturalWidth}x${img.naturalHeight}`)));
+});
+check(stickerSize === '1050x1500', `シールの大きさがちがう: ${stickerSize}`);
+check((await a.textContent('.modal .sheet')).includes('シール紙'), 'シールの印刷の案内が出ない');
+await saveModalImage(a, '04-sticker');
 // いまの二つ名（時間帯で前半が変わる）
 check((await a.textContent('.now-name .now-word')).endsWith(quickLabel), 'いまの二つ名にタイプ名がない');
 await a.click('[data-now-card]');

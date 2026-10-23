@@ -114,13 +114,18 @@ const CSP = [
   "base-uri 'self'",
   "form-action 'self'",
 ].join('; ');
-// ---------- JS と CSS を1つずつにまとめて小さくし、中身のハッシュを名前に入れる ----------
+// ---------- JS と CSS をまとめて小さくし、中身のハッシュを名前に入れる ----------
 // （ハッシュが変わればURLも変わるので、ブラウザに長くキャッシュさせても新旧が混ざらない）
+// ボタンを押したときだけ使う大きいもの（シールの QR）は、別のファイルに分けて、そのときだけ読みこむ
 const assets = path.join(dist, 'assets');
 const hashOf = (text) => crypto.createHash('sha256').update(text).digest('hex').slice(0, 10);
 const bundled = await esbuild({
   entryPoints: [path.join(assets, 'app.js')],
   bundle: true,
+  splitting: true,
+  outdir: assets,
+  entryNames: 'app',
+  chunkNames: 'chunk.[hash]',
   minify: true,
   format: 'esm',
   target: ['es2020', 'safari14', 'chrome90'],
@@ -128,12 +133,18 @@ const bundled = await esbuild({
   // 日本語を \uXXXX にしない（そのままのほうがずっと小さい）
   charset: 'utf8',
   write: false,
+  metafile: true,
 });
-const appCode = bundled.outputFiles[0].text;
+const appCode = bundled.outputFiles.find((f) => path.basename(f.path) === 'app.js').text;
+const chunks = bundled.outputFiles.filter((f) => path.basename(f.path) !== 'app.js');
+// 起動時に必ず読む共通部分（app から静的に import される chunk）は、HTML で先読みして待ち時間を増やさない
+const entryMeta = Object.entries(bundled.metafile.outputs).find(([p]) => path.basename(p) === 'app.js')[1];
+const preload = entryMeta.imports.filter((i) => i.kind === 'import-statement').map((i) => path.basename(i.path));
 const cssCode = (await transform(fs.readFileSync(path.join(assets, 'style.css'), 'utf8'), { loader: 'css', minify: true, charset: 'utf8' })).code;
 const appName = `app.${hashOf(appCode)}.js`;
 for (const f of fs.readdirSync(assets)) fs.rmSync(path.join(assets, f));
 fs.writeFileSync(path.join(assets, appName), appCode);
+chunks.forEach((f) => fs.writeFileSync(path.join(assets, path.basename(f.path)), f.text));
 (function rewrite(dir) {
   for (const f of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, f.name);
@@ -141,7 +152,8 @@ fs.writeFileSync(path.join(assets, appName), appCode);
     else if (f.name.endsWith('.html')) {
       // CSS は小さい（gzip で数KB）ので、別ファイルにせず HTML に入れて、読みこみの往復を1回へらす
       const html = fs.readFileSync(full, 'utf8')
-        .replaceAll('assets/app.js"', `assets/${appName}"`)
+        .replace(/<script type="module" src="([./]*)assets\/app\.js"><\/script>/, (_, rel) =>
+          `${preload.map((c) => `<link rel="modulepreload" href="${rel}assets/${c}">`).join('')}<script type="module" src="${rel}assets/${appName}"></script>`)
         .replace(/<link rel="stylesheet" href="[./]*assets\/style\.css">/, () => `<style>${cssCode}</style>`);
       fs.writeFileSync(full, html);
     }
@@ -173,4 +185,4 @@ if (!SITE.origin.includes('example.com') && placeholder) {
   process.exit(1);
 }
 if (placeholder) console.warn('注意: config.js の seller（特定商取引法の表記）が仮のままです。埋めるまで、本番の環境変数 SELLER_READY=1 は入れないでください（入れるまで販売は始まりません）。');
-console.log(`built ${TYPES.length} type pages + types/invite/quiz/pair/group/thanks pages into dist/ (${appName} ${Math.round(Buffer.byteLength(appCode) / 1024)}KB, CSS ${Math.round(Buffer.byteLength(cssCode) / 1024)}KB inlined)`);
+console.log(`built ${TYPES.length} type pages + types/invite/quiz/pair/group/thanks pages into dist/ (${appName} ${Math.round(Buffer.byteLength(appCode) / 1024)}KB + ${chunks.map((f) => `${path.basename(f.path)} ${Math.round(f.contents.length / 1024)}KB`).join(' + ')}, CSS ${Math.round(Buffer.byteLength(cssCode) / 1024)}KB inlined)`);

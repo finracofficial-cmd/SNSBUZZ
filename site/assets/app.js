@@ -320,6 +320,7 @@ document.getElementById('modal').addEventListener('click', delegate);
   const params = new URLSearchParams(location.search);
   const page = document.body.dataset.page;
   if (params.has('s')) track('ref', '1');
+  if (params.get('ch') === 'print') track('ref', 'print');
   // 再訪：結果を持っている端末が、別の日にまた開いたら1日1回だけ数える（いまの二つ名・今週のお題の効き目を見る）
   const today = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
   const lastVisit = store.get('lastVisit', null);

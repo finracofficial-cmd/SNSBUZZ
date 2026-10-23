@@ -12,7 +12,7 @@ import { app, ORIGIN, esc, track, loadStats, render, toast, foot, brand, shareLi
 import { openPaywall, fetchPremium, hasPremium, previewUnlocked, watchClaim, premiumStatus, maybeShowAfterPurchase, restorePurchase, hasGift, openGift, priceOf } from './premium.js';
 import { openInviteModal, openGroupCreate, invitePairBox, openQuizCreate } from './social.js';
 import { openProfileCard } from './profile.js';
-import { shareCarousel, shareUrl } from './result.js';
+import { shareCarousel, shareUrl, bindSticker } from './result.js';
 import { textResult } from './textshare.js';
 import { canRecordVideo, recordReveal } from './video.js';
 import { nowCard, bindNowCard } from './now.js';
@@ -205,6 +205,7 @@ export async function viewReport(r, shareId) {
         <button class="btn sub small" data-card="status">${prem ? '' : ICONS.lock}ステータスカード</button>
         <button class="btn sub small" data-prof>プロフ帳カード</button>
       </div>
+      <button class="btn sub small wide" data-sticker>シール帳用のシール（コンビニで印刷・L判）</button>
       <button class="btn sub small wide" data-card="wallpaper">${prem ? '' : ICONS.lock}ロック画面の壁紙（完全版の特典）</button>
     </section>
     ${failed
@@ -269,6 +270,7 @@ export async function viewReport(r, shareId) {
   app.querySelector('[data-group]').addEventListener('click', openGroupCreate);
   app.querySelector('[data-prof]').addEventListener('click', () => openProfileCard(r));
   bindNowCard(r.index, url);
+  bindSticker(r, url);
   app.querySelectorAll('[data-card]').forEach((b) =>
     b.addEventListener('click', () => {
       const card = b.dataset.card;

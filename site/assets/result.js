@@ -187,6 +187,7 @@ export async function viewResult(r, shareId) {
         <button class="btn sub small" data-card="label">成分表カード</button>
         <button class="btn sub small" data-prof>プロフ帳カード</button>
       </div>
+      <button class="btn sub small wide" data-sticker>シール帳用のシール（コンビニで印刷・L判）</button>
     </section>
     <div class="tiles">
       <div class="tile"><b>ポンコツ純度</b><strong>${r.purity}%</strong><small>${esc(title)}</small></div>
@@ -258,6 +259,22 @@ export async function viewResult(r, shareId) {
   app.querySelector('[data-prof]').addEventListener('click', () => openProfileCard(r));
   bindNowCard(r.index, url);
   bindPoll(gen, navNow);
+  bindSticker(r, url);
+}
+
+// シール帳用のシール。QR のリンクは相性のおさそいつき（ch=print で、シールから来た人を数える）
+export const STICKER_HINT = '保存した画像を、コンビニのマルチコピー機やネットプリントで「シール紙（L判）」を選んで印刷してね（料金や対応は、お店やアプリで確かめてね）';
+export function bindSticker(r, url) {
+  const b = app.querySelector('[data-sticker]');
+  b?.addEventListener('click', () =>
+    busy(b, async () => {
+      toast('シールをつくっています…');
+      const { drawStickerSheet } = await import('./sticker.js');
+      const canvas = await drawStickerSheet(r, `${url}&ch=print`);
+      track('share', 'sticker');
+      await shareImageBlob(await canvasToBlob(canvas), { name: `ponkotsu-sticker-${typeNo(r.index)}.png`, text: '', alt: `${TYPES[r.index].label}のシール`, hint: STICKER_HINT });
+    }),
+  );
 }
 
 // ---------- タイプ詳細（シェアURLの着地点・図鑑から） ----------

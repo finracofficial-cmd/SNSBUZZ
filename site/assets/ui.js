@@ -317,7 +317,7 @@ export async function copySilently(text) {
 // ストーリーに貼る「リンク」スタンプの案内（結果のリンクは、画像をつくる前にコピーしておく）
 const LINK_STICKER = '<p class="hint">結果のリンクはコピー済み。ストーリーで「スタンプ」→「リンク」→ 貼りつけ、で見た人が診断に来られるよ（鍵アカでもOK）</p>';
 
-export async function shareImageBlob(blob, { name, text, alt, linkCopied = false }) {
+export async function shareImageBlob(blob, { name, text, alt, linkCopied = false, hint = '' }) {
   if (!blob) {
     toast('画像を作れませんでした。もう一度ためしてね');
     return;
@@ -327,11 +327,11 @@ export async function shareImageBlob(blob, { name, text, alt, linkCopied = false
     const objectUrl = URL.createObjectURL(blob);
     openModal(
       `<img src="${objectUrl}" alt="${esc(alt)}">
-     <p class="hint">画像を長押しして保存 → ストーリーや動画で投稿してね</p>${linkCopied ? LINK_STICKER : ''}${ADD_YOURS}${inAppHint()}
+     ${hint ? `<p class="hint">${esc(hint)}</p>` : `<p class="hint">画像を長押しして保存 → ストーリーや動画で投稿してね</p>${linkCopied ? LINK_STICKER : ''}${ADD_YOURS}`}${inAppHint()}
      <button class="btn sub" data-close>とじる</button>`,
       () => URL.revokeObjectURL(objectUrl),
     );
   };
-  const after = () => linkCopied && toast('リンクはコピー済み。ストーリーの「リンク」スタンプに貼りつけてね');
+  const after = () => (hint ? toast(hint) : linkCopied && toast('リンクはコピー済み。ストーリーの「リンク」スタンプに貼りつけてね'));
   if (!(await shareFiles([file], text, fallback, after))) fallback();
 }
