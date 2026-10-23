@@ -4,7 +4,7 @@ import { TYPES, AXES, QUESTIONS, typeNo } from './data.js';
 import { compatOf, decodeResult, encodeResult, quickCodeOf, resultFromSums, axisPctOf } from './logic.js';
 import { charaSVG } from './chara.js';
 import { drawPairCard, canvasToBlob } from './card.js';
-import { optionOrder } from './quiz.js';
+import { optionsHtml } from './quiz.js';
 import { app, ORIGIN, esc, cleanName, store, track, api, render, toast, openModal, closeModal, foot, brand, shareLinks, shareImageBlob, navNow, busy, copyText, confirmModal, safeDecode } from './ui.js';
 import { jstParts } from './clock.js';
 
@@ -496,7 +496,7 @@ function nextFriendQuestion() {
       <div class="qhead"><span>わたしクイズ　${fq.pos + 1} / ${total}</span></div>
       <p class="lead">${esc(fq.name)}さんは、どれを選んだ？</p>
       <h2 class="qtext">${esc(q.text)}</h2>
-      <div class="opts">${optionOrder('axis', qi).map((j) => `<button class="opt" data-fq="${j}">${esc(q.options[j].text)}</button>`).join('')}</div>`);
+      <div class="opts">${optionsHtml('axis', qi, 'data-fq')}</div>`);
     app.querySelectorAll('[data-fq]').forEach((b) =>
       b.addEventListener('click', () => answerFriend(Number(b.dataset.fq) === fq.answers[qi], b, `[data-fq="${fq.answers[qi]}"]`)),
     );

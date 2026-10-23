@@ -79,6 +79,12 @@ a { color: inherit; }
   padding: 16px 18px; font-size: 17px; cursor: pointer; box-shadow: 0 4px 0 var(--line);
   transition: transform .08s, background .15s, border-color .15s;
 }
+/* 選択肢：左に絵文字、右に短い文。上から「控えめ → 全開」の順 */
+.opt { display: flex; align-items: center; gap: 12px; color: var(--ink); font-family: inherit; line-height: 1.4; }
+.opt .oe { flex: 0 0 auto; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; background: var(--bg); font-size: 20px; line-height: 1; }
+.opt .ot { flex: 1; }
+.opt.on .oe { background: #fff; }
+.qhint { margin: -14px 0 16px; color: var(--sub); font-size: 14px; font-weight: 500; }
 .opt:active, .opt.on, .poll-opt:active, .poll-opt.on { transform: translateY(3px); box-shadow: 0 1px 0 var(--line); }
 .opt.on, .poll-opt.on { background: #FFE6DD; border-color: var(--accent); }
 

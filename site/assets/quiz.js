@@ -7,18 +7,24 @@ import { charaSVG } from './chara.js';
 import { app, esc, store, track, loadStats, render, toast, navNow } from './ui.js';
 import { variant } from './ab.js';
 
-// 選択肢の並びが「弱い→強い」の順に見えないよう、質問ごとに固定の順でシャッフルする
-function shuffled(n, seedBase) {
-  const idx = Array.from({ length: n }, (_, j) => j);
-  let seed = seedBase * 7919 + 17;
-  for (let j = idx.length - 1; j > 0; j--) {
-    seed = (seed * 48271) % 2147483647;
-    const k = seed % (j + 1);
-    [idx[j], idx[k]] = [idx[k], idx[j]];
-  }
-  return idx;
-}
-export const optionOrder = (kind, i) => shuffled(4, kind === 'axis' ? i : 100 + i);
+// 選択肢は、いつも「控えめ → 全開」の順（点数の小さい順）に上から並べる。
+// 並びがばらばらだと、4つ全部を読んで頭の中で並べかえないと選べない（「選びにくい」という声があった）。
+// 返り値は、data の選択肢の番号を表示する順に並べたもの（回答には data の番号を使う）
+const questionOf = (kind, i) => (kind === 'axis' ? QUESTIONS[i] : PARAM_QUESTIONS[i]);
+export const optionOrder = (kind, i) =>
+  questionOf(kind, i).options.map((o, j) => [o.v, j]).sort((x, y) => x[0] - y[0]).map(([, j]) => j);
+
+// 選択肢のボタン（絵文字でひと目で見分けられるように）。attr は data-choice などの属性名
+export const optionsHtml = (kind, i, attr) =>
+  optionOrder(kind, i)
+    .map((j) => {
+      const o = questionOf(kind, i).options[j];
+      return `<button class="opt" ${attr}="${j}"><span class="oe" aria-hidden="true">${o.e || ''}</span><span class="ot">${esc(o.text)}</span></button>`;
+    })
+    .join('');
+// 質問の下の一言：「もしいたら」で答えてね（あれば）／最初の2問だけ「いちばん近いものでOK」
+export const questionHint = (q, first = false) =>
+  q.note ? `<p class="qhint">${esc(q.note)}</p>` : first ? '<p class="qhint">ぴったりがなくても、いちばん近いものでOK</p>' : '';
 
 const TOTAL = QUESTIONS.length + PARAM_QUESTIONS.length;
 // 結果の直前に見せる「いま何を計算しているか」。本当にしている計算だけを書く（「AIが分析」などは書かない）
@@ -117,10 +123,8 @@ function viewChapterDone(c) {
 function viewStep() {
   const s = session;
   const [kind, i] = s.steps[s.pos];
-  const q = kind === 'axis' ? QUESTIONS[i] : PARAM_QUESTIONS[i];
-  const opts = optionOrder(kind, i)
-    .map((j) => `<button class="opt" data-choice="${j}">${esc(q.options[j].text)}</button>`)
-    .join('');
+  const q = questionOf(kind, i);
+  const opts = optionsHtml(kind, i, 'data-choice');
   const total = s.mode === 'detail' ? TOTAL : QUESTIONS.length;
   const n = s.offset + s.pos + 1;
   const where = kind === 'param' ? CHAPTERS[q.chapter].title : s.mode === 'detail' ? 'かんたん診断パート' : 'かんたん診断';
@@ -128,6 +132,7 @@ function viewStep() {
     <div class="progress ${s.mode}" aria-hidden="true"><i style="width:${((n - 1) / total) * 100}%"></i></div>
     <div class="qhead"><span>${esc(where)}　${n} / ${total}</span>${s.pos > 0 ? '<button data-back>← もどる</button>' : '<a href="#/">やめる</a>'}</div>
     <h2 class="qtext">${esc(q.text)}</h2>
+    ${questionHint(q, s.offset + s.pos < 2)}
     <div class="opts">${opts}</div>`);
   if (s.mode === 'quick' && QUICK_CHEERS[s.pos]) toast(QUICK_CHEERS[s.pos]);
 }

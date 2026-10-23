@@ -5,7 +5,7 @@ import { TYPES, HIDDEN, BASE_COUNT, QUESTIONS, PARAM_QUESTIONS, indexFromNo, typ
 import { decodeResult } from './logic.js';
 import { charaSVG } from './chara.js';
 import { app, esc, store, track, render, foot, brand, toast, handleShareClick, closeModal, navBegin, navNow, safeDecode, loadStats } from './ui.js';
-import { startQuiz, handleQuizClick, cancelQuiz, savedQuickAnswers, optionOrder, quizActive } from './quiz.js';
+import { startQuiz, handleQuizClick, cancelQuiz, savedQuickAnswers, optionsHtml, questionHint, quizActive } from './quiz.js';
 import { viewResult, viewType, viewZukan, showLockedType, receiveCarryover } from './result.js';
 import { viewReport } from './report.js';
 import { viewAdmin } from './admin.js';
@@ -97,7 +97,8 @@ async function viewHome() {
       ${charaSVG(mine.index, { size: 64 })}<div><small>前回のあなた</small><b>${esc(TYPES[mine.index].label)}</b><small class="now-line">いまは「${esc(nowName(mine.index).text)}」</small></div><span>結果を見る →</span></a>` : `
     <section class="card q1card"><p class="lead">さっそく1問目（全${QUESTIONS.length}問）</p>
       <h2 class="qtext">${esc(q1.text)}</h2>
-      <div class="opts">${optionOrder('axis', 0).map((j) => `<button class="opt" data-q1="${j}">${esc(q1.options[j].text)}</button>`).join('')}</div>
+      ${questionHint(q1, true)}
+      <div class="opts">${optionsHtml('axis', 0, 'data-q1')}</div>
     </section>`}
     ${mine ? pollCard() : ''}
     <section class="card samples"><h2>こんな結果が出ます</h2>

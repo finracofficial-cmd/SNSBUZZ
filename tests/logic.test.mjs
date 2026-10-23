@@ -66,6 +66,20 @@ test('質問セットの形：軸12問（各3問）、パラメータ24問（各
   assert.equal(PARAM_MAX, 12);
 });
 
+test('選びやすさ：選択肢は短く、絵文字つきで、重ならない。「いなければ」の質問には案内がある', () => {
+  for (const q of [...QUESTIONS, ...PARAM_QUESTIONS]) {
+    q.options.forEach((o) => {
+      assert.ok(o.e && o.e.length <= 4, `絵文字がない: ${o.text}`);
+      assert.ok(Array.from(o.text).length <= 16, `選択肢が長い: ${o.text}`);
+    });
+    assert.equal(new Set(q.options.map((o) => o.e)).size, 4, `絵文字が重なっている: ${q.text}`);
+    assert.equal(new Set(q.options.map((o) => o.text)).size, 4, q.text);
+    // 好きな人・推しがいない人も答えられるように
+    const needsNote = /好きな人|告白|気になる人/.test(q.text) || (q.text.startsWith('推し') && q.text !== '推しはいる？' && !q.text.includes('好きなキャラ'));
+    if (needsNote) assert.ok(q.note, `「いなければ」の案内がない: ${q.text}`);
+  }
+});
+
 test('文言データがそろっている', () => {
   assert.equal(TYPES.length, 20);
   TYPES.forEach((t, i) => assert.ok(TYPES[t.best], `相性先が存在しない: ${i}`));
