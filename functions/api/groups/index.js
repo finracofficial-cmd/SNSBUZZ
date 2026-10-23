@@ -1,11 +1,7 @@
 // POST /api/groups {name} — グループ診断を作る。作った人には、メンバーを外したりグループを消したりできる管理キーを返す
-import { json, readJson, rateLimited, crossSite, hasNgWord } from '../../_lib/http.js';
+import { json, readJson, rateLimited, crossSite, hasNgWord, cleanText } from '../../_lib/http.js';
 import { cleanup } from '../../_lib/purchase.js';
 
-const clean = (s, max) =>
-  Array.from(String(s ?? '').replace(/[\u0000-\u001f\u007f<>]/g, '').trim())
-    .slice(0, max)
-    .join('');
 const randomId = (n) =>
   [...crypto.getRandomValues(new Uint8Array(n))].map((b) => 'abcdefghijkmnpqrstuvwxyz23456789'[b % 32]).join('');
 
@@ -14,7 +10,7 @@ export async function onRequestPost({ request, env }) {
   if (crossSite(request)) return json({ error: 'origin' }, 403);
   if (await rateLimited(env, request, 'group', 5)) return json({ error: 'rate' }, 429);
   const body = await readJson(request);
-  const name = clean(body?.name, 20);
+  const name = cleanText(body?.name, 20);
   if (!name) return json({ error: 'name' }, 400);
   if (hasNgWord(name)) return json({ error: 'ng' }, 400);
   const id = randomId(8);

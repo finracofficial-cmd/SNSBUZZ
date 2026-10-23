@@ -5,38 +5,39 @@ import { compatOf, decodeResult, encodeResult, quickCodeOf, resultFromSums, axis
 import { charaSVG } from './chara.js';
 import { drawPairCard, canvasToBlob } from './card.js';
 import { optionOrder } from './quiz.js';
-import { app, ORIGIN, esc, cleanName, store, track, api, render, toast, openModal, closeModal, foot, brand, shareLinks, shareImageBlob, navNow, busy, copyText } from './ui.js';
+import { app, ORIGIN, esc, cleanName, store, track, api, render, toast, openModal, closeModal, foot, brand, shareLinks, shareImageBlob, navNow, busy, copyText, confirmModal, safeDecode } from './ui.js';
 import { jstParts } from './clock.js';
 
 // ---------- 出会ったタイプ（図鑑のコンプリート用） ----------
-export function addFriend(rawName, code) {
-  const r = decodeResult(code);
-  if (!r) return;
+// 友達の結果は、かんたん診断の部分（タイプと4軸）だけを持つ。くわしい診断のパラメータ（恋愛積極度など）は、
+// リンクにも端末にも入れない（相性はタイプだけで決まる。友達が相性の画像をシェアしたときに公開されないように）
+export function addFriend(rawName, rawCode) {
+  if (!decodeResult(rawCode)) return;
+  const code = quickCodeOf(rawCode);
   const name = cleanName(rawName) || '友達';
-  // 同じ人（同じ名前で、かんたん診断の結果も同じ）は1人にまとめる。くわしい診断のコードがあればそちらを残す
-  const same = (f) => f.name === name && quickCodeOf(f.code) === quickCodeOf(code);
+  // 同じ人（同じ名前で、かんたん診断の結果も同じ）は1人にまとめる
+  const same = (f) => f.name === name && quickCodeOf(f.code) === code;
   const list = store.get('friends', []);
-  const old = list.find(same);
-  const keep = old && old.code.length > code.length ? old.code : code;
-  store.set('friends', [{ name, code: keep, at: Date.now() }, ...list.filter((f) => !same(f))].slice(0, 60));
+  store.set('friends', [{ name, code, at: Date.now() }, ...list.filter((f) => !same(f))].slice(0, 60));
 }
 export const friends = () =>
   store
     .get('friends', [])
-    .map((f) => ({ ...f, result: decodeResult(f.code) }))
+    .filter((f) => f && typeof f.code === 'string')
+    .map((f) => ({ ...f, code: quickCodeOf(f.code), result: decodeResult(quickCodeOf(f.code)) }))
     .filter((f) => f.result);
 
 // ---------- おさそいリンク ----------
 export function inviteUrl(result, name) {
-  const params = new URLSearchParams({ f: encodeResult(result), n: cleanName(name) || '友達' });
+  const params = new URLSearchParams({ f: quickCodeOf(encodeResult(result)), n: cleanName(name) || '友達' });
   return `${ORIGIN}/i/${typeNo(result.index).toLowerCase()}/?${params}`;
 }
 
 // /i/NN/?f=..&n=.. から来たとき：おさそいを保存してトップへ
 export function receiveInvite(params) {
-  const code = params.get('f');
+  if (!decodeResult(params.get('f'))) return false;
+  const code = quickCodeOf(params.get('f'));
   const name = cleanName(params.get('n')) || '友達';
-  if (!decodeResult(code)) return false;
   store.set('invite', { name, code });
   addFriend(name, code);
   track('ref', '1');
@@ -74,7 +75,7 @@ export function inviteBanner({ cta = false } = {}) {
   const button = !cta
     ? ''
     : mineResult
-      ? `<a class="btn small" href="#/pair/${esc(inv.code)}/${esc(quickCodeOf(mine.code))}/${encodeURIComponent(inv.name || '友達')}/${encodeURIComponent('わたし')}">相性を見る</a>`
+      ? `<a class="btn small" href="#/pair/${esc(quickCodeOf(inv.code))}/${esc(quickCodeOf(mine.code))}/${encodeURIComponent(inv.name || '友達')}/${encodeURIComponent('わたし')}">相性を見る</a>`
       : '<button class="btn small" data-go="#/q">診断する（12問・約1分）</button>';
   return `<div class="invite">
     <div class="invite-chara">${charaSVG(r.index, { size: 72 })}</div>
@@ -101,7 +102,7 @@ export function invitePairBox(mine) {
     </div>
     <p>${esc(c.good)}。${c.care ? `ただし、${esc(c.care)}。` : ''}</p>
     <div class="btn-row">
-      <a class="btn sub small" href="#/pair/${encodeResult(other)}/${encodeResult(mine)}/${encodeURIComponent(inv.name || '友達')}/${encodeURIComponent('わたし')}">ふたりの相性をくわしく</a>
+      <a class="btn sub small" href="#/pair/${quickCodeOf(encodeResult(other))}/${quickCodeOf(encodeResult(mine))}/${encodeURIComponent(inv.name || '友達')}/${encodeURIComponent('わたし')}">ふたりの相性をくわしく</a>
       <a class="btn small" data-ch="pairback:line" href="https://line.me/R/share?text=${encodeURIComponent(`${backText}\n${back}`)}" target="_blank" rel="noopener">LINEで相性を送り返す</a>
     </div>
   </section>`;
@@ -143,7 +144,7 @@ export function viewPair(codeA, codeB, nameA, nameB) {
   const c = compatOf(a, b);
   const ta = TYPES[a.index];
   const tb = TYPES[b.index];
-  const sendUrl = `${ORIGIN}/p/?${new URLSearchParams({ a: codeA, b: codeB, na: nameA, nb: nameB })}`;
+  const sendUrl = `${ORIGIN}/p/?${new URLSearchParams({ a: quickCodeOf(codeA), b: quickCodeOf(codeB), na: nameA, nb: nameB })}`;
   const text = `${nameA}（${ta.label}）× ${nameB}（${tb.label}）の相性は${c.score}%「${c.rank}」でした #${SITE.hashtag}`;
   render(`
     ${brand()}
@@ -232,7 +233,10 @@ const GROUP_ERRORS = {
   rate: '少し時間をおいて、もう一度ためしてね',
   ng: '使えない言葉が入っています。ほかの名前にしてね',
   full: 'このグループは満員です',
+  locked: 'このグループは、いま参加を締め切っています',
 };
+// 作った人の管理用リンク（別のブラウザ・データが消えたときも管理できるように）
+const adminUrl = (id, key) => `${ORIGIN}/#/g/${id}/a/${key}`;
 const randomId = (n) =>
   Array.from(crypto.getRandomValues(new Uint8Array(n)), (b) => 'abcdefghijkmnpqrstuvwxyz23456789'[b % 32]).join('');
 
@@ -261,6 +265,7 @@ export function openGroupCreate() {
     track('group', 'create');
     closeModal();
     location.hash = `#/g/${res.id}`;
+    toast('グループができました。管理用リンクは、ページのいちばん下にあります');
   };
 }
 
@@ -282,7 +287,9 @@ export async function viewGroup(id) {
   const gen = navNow();
   render(`${brand()}<div class="loading small">グループを読みこみ中…<div class="dots"><i></i><i></i><i></i></div></div>`);
   const admin = store.get(`groupAdmin:${id}`, null);
-  const g = await api(`groups/${id}?me=${encodeURIComponent(store.get('memberId', '') || '')}${admin ? `&admin=${encodeURIComponent(admin)}` : ''}`);
+  // 本人の秘密はグループごと（別のグループで同じ人だと分からないように）。ヘッダで送り、URLには入れない
+  const secret = store.get(`groupSecret:${id}`, null);
+  const g = await api(`groups/${id}`, { headers: { ...(secret ? { 'x-member': secret } : {}), ...(admin ? { 'x-admin': admin } : {}) } });
   if (gen !== navNow()) return;
   if (!g || g.error) {
     render(`${brand()}<div class="card"><h2>グループが見つかりません</h2><p>リンクがまちがっているか、グループの期限（作成から90日）が過ぎているか、作った人がグループを消しました。</p></div>
@@ -290,9 +297,8 @@ export async function viewGroup(id) {
     return;
   }
   const members = g.members.map((m) => ({ ...m, result: decodeResult(m.code) })).filter((m) => m.result);
-  const me = store.get('memberId', null);
   const mine = store.get('mine', null);
-  const joined = members.some((m) => m.id === me);
+  const joined = members.some((m) => m.mine);
   const roles = groupRoles(members);
   const counts = new Map();
   members.forEach((m) => counts.set(m.result.index, (counts.get(m.result.index) || 0) + 1));
@@ -314,7 +320,9 @@ export async function viewGroup(id) {
       <h1 class="label">${esc(g.name)}</h1>
       <span class="chip">${members.length}人が参加中</span>
     </section>
-    ${joined ? '' : mine
+    ${joined ? '' : g.locked
+      ? '<div class="card"><h2>参加の受付は締め切られています</h2><p>このグループは、作った人が新しい参加を締め切っています。</p></div>'
+      : mine
       ? `<div class="card"><h2>このグループに参加する</h2>
           <label class="field">ニックネーム<input id="join-name" maxlength="10" value="${esc(store.get('nick', ''))}" placeholder="例：ゆう"></label>
           <p class="hint">本名は入れないでね。グループのページには、ニックネームとかんたん診断のタイプだけが出ます。</p>
@@ -323,8 +331,8 @@ export async function viewGroup(id) {
           <button class="btn" data-go="#/q">診断する</button></div>`}
     ${members.length ? `
     <div class="card"><h2>メンバー</h2><div class="members">${members.map((m) => `
-      <div class="member-wrap"><a class="member ${m.id === me ? 'mine' : ''}" href="#/t/${typeNo(m.result.index).toLowerCase()}">${charaSVG(m.result.index, { size: 64 })}<b>${esc(m.nick)}</b><small>${esc(TYPES[m.result.index].label)}</small></a>
-      ${g.admin && m.id !== me ? `<button class="linkish small" data-kick="${esc(m.id)}" aria-label="${esc(m.nick)}をグループから外す">外す</button>` : ''}</div>`).join('')}</div></div>
+      <div class="member-wrap"><a class="member ${m.mine ? 'mine' : ''}" href="#/t/${typeNo(m.result.index).toLowerCase()}">${charaSVG(m.result.index, { size: 64 })}<b>${esc(m.nick)}</b><small>${esc(TYPES[m.result.index].label)}</small></a>
+      ${g.admin && !m.mine ? `<button class="linkish small" data-kick="${esc(m.handle)}" data-nick="${esc(m.nick)}" aria-label="${esc(m.nick)}をグループから外す">外す</button>` : ''}</div>`).join('')}</div></div>
     <div class="card"><h2>グループ内の役割</h2><ul class="roles">${roles.map((r) => `<li><span class="chip">${esc(r.role)}</span>${esc(r.member.nick)}${eventSeason() ? `<small>文化祭なら：${esc(r.event)}</small>` : ''}</li>`).join('')}</ul></div>
     <div class="card"><h2>このグループをひとことで</h2>
       <p>${top[1] > 1 ? `いちばん多いのは「${esc(TYPES[top[0]].label)}」（${top[1]}人）。` : 'メンバー全員がちがうタイプの、バラエティ豊かなグループ。'}グループ全体を1人にすると「${esc(TYPES[groupType].label)}」っぽいチームです。</p>
@@ -336,8 +344,10 @@ export async function viewGroup(id) {
       <p class="hint">このグループは ${new Date(g.expiresAt).toLocaleDateString('ja-JP')} に消えます。</p></div>
     ${joined || g.admin ? `<div class="card"><h2>グループの設定</h2><div class="btn-col">
       ${joined ? '<button class="btn sub small" data-leave>このグループから抜ける</button>' : ''}
-      ${g.admin ? '<button class="btn sub small" data-delete-group>グループを消す（作った人だけ）</button>' : ''}
-    </div></div>` : ''}
+      ${g.admin ? `<button class="btn sub small" data-lock>${g.locked ? '参加の受付を再開する' : '参加を締め切る'}</button>
+        <button class="btn sub small" data-admin-link>管理用リンクをコピー（作った人だけ）</button>
+        <button class="btn sub small" data-delete-group>グループを消す（作った人だけ）</button>` : ''}
+    </div>${g.admin ? '<p class="hint">締め切ると、新しい人は参加できなくなります（外した人も戻れません）。管理用リンクを保存しておくと、ほかのブラウザやデータが消えたあとでも管理できます。ほかの人には送らないでね。</p>' : ''}</div>` : ''}
     ${foot()}`);
   app.querySelector('[data-group-text]')?.addEventListener('click', () => {
     track('share', 'group-text');
@@ -348,10 +358,10 @@ export async function viewGroup(id) {
     join.onclick = async () => {
       const nick = cleanName(app.querySelector('#join-name').value) || 'ななし';
       store.set('nick', nick);
-      const memberId = me || randomId(12);
-      store.set('memberId', memberId);
+      const memberSecret = secret || randomId(20);
+      store.set(`groupSecret:${id}`, memberSecret);
       // グループには、かんたん診断の結果だけを送る（くわしい診断のパラメータは送らない）
-      const res = await api(`groups/${id}`, { method: 'POST', body: { id: memberId, nick, code: quickCodeOf(mine.code) } });
+      const res = await api(`groups/${id}`, { method: 'POST', body: { secret: memberSecret, nick, code: quickCodeOf(mine.code) } });
       if (!res || res.error) {
         toast(GROUP_ERRORS[res?.error] || '参加できませんでした');
         return;
@@ -361,20 +371,30 @@ export async function viewGroup(id) {
     };
   }
   app.querySelector('[data-leave]')?.addEventListener('click', async () => {
-    if (!window.confirm('このグループから抜けますか？')) return;
-    if (await leaveGroup(id, { id: me }, 'グループから抜けました')) viewGroup(id);
+    if (!(await confirmModal('このグループから抜けますか？', '抜ける'))) return;
+    if (await leaveGroup(id, { secret }, 'グループから抜けました')) viewGroup(id);
   });
   app.querySelector('[data-delete-group]')?.addEventListener('click', async () => {
-    if (!window.confirm('グループを消しますか？ メンバー全員のページから消えます')) return;
+    if (!(await confirmModal('グループを消しますか？ メンバー全員のページから消えます', '消す'))) return;
     if (await leaveGroup(id, { admin, all: true }, 'グループを消しました')) {
       store.set(`groupAdmin:${id}`, null);
       location.hash = '#/';
     }
   });
+  app.querySelector('[data-lock]')?.addEventListener('click', async () => {
+    const res = await api(`groups/${id}`, { method: 'PATCH', body: { admin, locked: !g.locked } });
+    if (!res || res.error) {
+      toast(GROUP_ERRORS[res?.error] || 'うまくいきませんでした');
+      return;
+    }
+    toast(g.locked ? '参加の受付を再開しました' : '参加を締め切りました');
+    viewGroup(id);
+  });
+  app.querySelector('[data-admin-link]')?.addEventListener('click', () => copyText(adminUrl(id, admin)));
   app.querySelectorAll('[data-kick]').forEach((b) =>
     b.addEventListener('click', async () => {
-      if (!window.confirm('このメンバーをグループから外しますか？')) return;
-      if (await leaveGroup(id, { admin, member: b.dataset.kick }, 'メンバーを外しました')) viewGroup(id);
+      if (!(await confirmModal(`${b.dataset.nick}さんをグループから外しますか？`, '外す'))) return;
+      if (await leaveGroup(id, { admin, handle: b.dataset.kick }, 'メンバーを外しました')) viewGroup(id);
     }),
   );
 }
@@ -549,7 +569,8 @@ function friendQuizResult() {
 
 // 友達から届いた点数（本人の端末にだけ記録する）
 export function receiveQuizScore(name, score) {
-  const n = cleanName(decodeURIComponent(name || '')) || 'ななし';
+  // リンクが途中で切れて名前が読めなくても、点数は残す
+  const n = cleanName(safeDecode(name)) || 'ななし';
   const sc = Number(score);
   if (!Number.isInteger(sc) || sc < 0 || sc > QUIZ_LEN + 1) return false;
   const list = store.get('quizScores', []).filter((x) => x.name !== n);

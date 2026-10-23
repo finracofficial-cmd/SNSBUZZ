@@ -14,6 +14,7 @@ import { onRequestGet as unlockGet } from '../functions/api/unlock.js';
 import { onRequestGet as claimGet } from '../functions/api/claim.js';
 import { onRequestGet as giftGet, onRequestPost as giftPost } from '../functions/api/gift.js';
 import { onRequestGet as restoreGet } from '../functions/api/restore.js';
+import { onRequestPost as adoptPost } from '../functions/api/adopt.js';
 import { onRequestPost as webhookPost } from '../functions/api/stripe-webhook.js';
 import { onRequestPost as eventPost } from '../functions/api/event.js';
 import { onRequestGet as statsGet } from '../functions/api/stats.js';
@@ -47,7 +48,7 @@ const post = (url, body, headers = {}) =>
 const del = (url, body) => req(url, { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
 const bearer = (t) => ({ headers: { authorization: `Bearer ${t}` } });
 const SECRET = { PREMIUM_SECRET: 'test-secret-0123456789' };
-const STRIPE = { STRIPE_SECRET_KEY: 'sk_test', STRIPE_PRICE_ID: 'price_solo', STRIPE_PRICE_ID_DUO: 'price_duo' };
+const STRIPE = { STRIPE_SECRET_KEY: 'sk_test', STRIPE_PRICE_ID: 'price_solo', STRIPE_PRICE_ID_DUO: 'price_duo', SELLER_READY: '1' };
 
 // Stripe の API を差し替える（価格・Checkout Session）
 function stubStripe(sessions, prices = { price_solo: 390, price_duo: 590 }) {
@@ -56,7 +57,7 @@ function stubStripe(sessions, prices = { price_solo: 390, price_duo: 590 }) {
   globalThis.fetch = async (url, init = {}) => {
     const u = String(url);
     sent.push({ url: u, body: init.body ? String(init.body) : '' });
-    if (init.method === 'POST') return Response.json({ url: 'https://checkout.stripe.com/c/pay/x' });
+    if (init.method === 'POST') return Response.json({ url: 'https://checkout.stripe.com/c/pay/x', id: 'cs_test_created00000' });
     const id = decodeURIComponent(u.split('/').pop());
     if (u.includes('/v1/prices/')) {
       return id in prices ? Response.json({ unit_amount: prices[id], currency: 'jpy', active: true }) : new Response('{}', { status: 404 });
@@ -143,6 +144,9 @@ test('決済の開始：Stripeの価格と画面の価格がちがえば止め�
     const rid = 'abcdefghijklmnop';
     const c1 = await checkoutPost({ request: post('/api/checkout', { plan: 'solo', index: 3, rid }), env });
     assert.equal(c1.status, 200);
+    assert.ok('id' in (await c1.json()), 'セッションIDも返す（/thanks/ に戻れなかったときの受け取り用）');
+    // 特商法の表記を書きかえるまで（SELLER_READY なし）は売らない
+    assert.equal((await checkoutPost({ request: post('/api/checkout', { plan: 'solo' }), env: { ...env, SELLER_READY: '' } })).status, 503);
     const form = new URLSearchParams(stripe.sent.at(-1).body);
     assert.equal(form.get('line_items[0][price]'), 'price_solo');
     assert.equal(form.get('client_reference_id'), rid);
@@ -197,10 +201,20 @@ test('支払いの受け取り：記録は1回だけ数え、ほかの商品・�
     assert.equal((await unlock('cs_test_unpaid000000')).status, 402);
     assert.equal((await unlock('cs_test_old000000000')).status, 410);
     assert.equal((await unlock('nope')).status, 400);
-    // Cookie から戻せる
-    const restored = await restoreGet({ request: req('/api/restore', { headers: { cookie: `pz_t=${b1.token}` } }), env });
-    assert.equal((await restored.json()).token, b1.token);
+    // Cookie から戻せる（プランも）
+    const restored = await (await restoreGet({ request: req('/api/restore', { headers: { cookie: `pz_t=${b1.token}` } }), env })).json();
+    assert.equal(restored.token, b1.token);
+    assert.equal(restored.plan, 'solo');
     assert.equal((await restoreGet({ request: req('/api/restore'), env })).status, 404);
+    // 引き継ぎリンクで開いた端末にも Cookie を付ける。いまの Cookie に自分の有効な購入があれば上書きしない
+    const adopt = (t, cookie) => adoptPost({ request: post('/api/adopt', {}, { authorization: `Bearer ${t}`, ...(cookie ? { cookie } : {}) }), env });
+    const a1 = await adopt(b1.token);
+    assert.equal(a1.status, 200);
+    assert.match(a1.headers.get('set-cookie'), /^pz_t=v1\.cs_test_solo/);
+    const promo = await issueToken(env, 'promo-X');
+    assert.equal((await adopt(promo, `pz_t=${b1.token}`)).headers.get('set-cookie'), null, '自分の購入の Cookie をコードで上書きしない');
+    assert.equal((await adopt('v1.cs_x.bad-signature-000000000000')).status, 401);
+    assert.equal((await adoptPost({ request: post('/api/adopt', {}, { authorization: `Bearer ${b1.token}`, origin: 'https://evil.example' }), env })).status, 403);
   } finally {
     stripe.restore();
   }
@@ -238,9 +252,26 @@ test('Webhook：署名を確かめて購入と受け取りを記録し、返金�
   // ほかの商品の通知は記録しない
   await send({ type: 'checkout.session.completed', data: { object: { id: 'cs_test_other', payment_status: 'paid', metadata: { plan: 'solo' } } } });
   assert.equal(DB.raw.prepare("SELECT COUNT(*) AS n FROM purchases WHERE id = 'cs_test_other'").get().n, 0);
-  // 返金
-  assert.equal((await send({ type: 'charge.refunded', data: { object: { payment_intent: 'pi_parent', refunded: true } } })).status, 200);
+  // 一部返金では止めない。全額返金で止める
+  assert.equal((await send({ type: 'charge.refunded', data: { object: { payment_intent: 'pi_parent', refunded: false, amount: 390, amount_refunded: 10 } } })).status, 200);
+  assert.equal((await premiumGet({ request: req('/api/premium?i=1', bearer(claimed.token)), env })).status, 200, '一部返金では読める');
+  assert.equal((await send({ type: 'charge.refunded', data: { object: { payment_intent: 'pi_parent', refunded: true, amount: 390, amount_refunded: 390 } } })).status, 200);
   assert.equal((await premiumGet({ request: req('/api/premium?i=1', bearer(claimed.token)), env })).status, 403);
+  // 申し立てに勝っても、返金済みなら戻さない
+  await send({ type: 'charge.dispute.closed', data: { object: { payment_intent: 'pi_parent', status: 'won' } } });
+  assert.equal((await premiumGet({ request: req('/api/premium?i=1', bearer(claimed.token)), env })).status, 403);
+  // 購入の記録より先に返金が届いても、取りこぼさない
+  await send({ type: 'charge.refunded', data: { object: { payment_intent: 'pi_early', refunded: true, amount: 390, amount_refunded: 390 } } });
+  await send({ type: 'checkout.session.completed', data: { object: { id: 'cs_test_early0000000', ...paid('solo', { payment_intent: 'pi_early' }) } } });
+  const early = await issueToken(env, 'cs_test_early0000000');
+  assert.equal((await premiumGet({ request: req('/api/premium?i=1', bearer(early)), env })).status, 403, '先に届いた返金も効く');
+  // チャージバック：申し立てで止め、販売者が勝ったら戻す
+  await send({ type: 'checkout.session.completed', data: { object: { id: 'cs_test_dispute00000', ...paid('solo', { payment_intent: 'pi_dispute' }) } } });
+  const disputed = await issueToken(env, 'cs_test_dispute00000');
+  await send({ type: 'charge.dispute.created', data: { object: { payment_intent: 'pi_dispute', status: 'needs_response' } } });
+  assert.equal((await premiumGet({ request: req('/api/premium?i=1', bearer(disputed)), env })).status, 403);
+  await send({ type: 'charge.dispute.closed', data: { object: { payment_intent: 'pi_dispute', status: 'won' } } });
+  assert.equal((await premiumGet({ request: req('/api/premium?i=1', bearer(disputed)), env })).status, 200, '申し立てに勝ったら戻す');
   assert.equal((await webhookPost({ request: req('/api/stripe-webhook', { method: 'POST', body: '{}' }), env: SECRET })).status, 503);
 });
 
@@ -258,6 +289,11 @@ test('ふたり用のプレゼント：買った人だけが券を出せて、�
     const g = await (await giftGet({ request: req('/api/gift', bearer(duo.token)), env })).json();
     assert.equal(g.used, false);
     assert.equal(await verifyToken(env, g.gift), 'gift-cs_test_duo000000000');
+    // 買った本人が開いても受け取れない（プレゼントが消えないように）。自分で買った完全版を持っている人も
+    assert.equal((await giftPost({ request: post('/api/gift', { gift: g.gift }, { authorization: `Bearer ${duo.token}` }), env })).status, 409);
+    assert.equal((await (await giftPost({ request: post('/api/gift', { gift: g.gift }, { cookie: `pz_t=${solo.token}` }), env })).json()).error, 'has');
+    assert.equal((await giftPost({ request: post('/api/gift', { gift: g.gift }, { origin: 'https://evil.example' }), env })).status, 403);
+    assert.equal((await (await giftGet({ request: req('/api/gift', bearer(duo.token)), env })).json()).used, false, 'まだ受け取られていない');
     const first = await giftPost({ request: post('/api/gift', { gift: g.gift }), env });
     assert.equal(first.status, 200);
     const friend = (await first.json()).token;
@@ -281,7 +317,7 @@ test('第1章の見本：二つ名の解説は前半だけ無料（types.js）�
       assert.ok(t.sample.length > 0 && detail.startsWith(t.sample), `${k}-${lv}`);
       assert.equal(t.len, Array.from(detail).length);
       assert.equal(t.rest, Array.from(detail).length - Array.from(t.sample).length);
-      assert.ok(t.rest >= Array.from(detail).length * 0.4, `後半が残っている ${k}-${lv}`);
+      assert.ok(t.rest >= Array.from(detail).length * 0.65, `続きの大半が残っている ${k}-${lv}`);
     }),
   );
   assert.ok(!fs.existsSync('functions/api/sample.js'), '有料文を返す見本APIはない');
@@ -343,7 +379,7 @@ test('計測：許可したキーだけ数え、日別にも記録する。回�
   assert.ok(blocked, '同じ /64 のアドレスを変えても数えられる');
 });
 
-test('グループ：作成・参加・NGワード・かんたん診断の結果だけ保存・抜ける・外す・消す・上限・期限切れ', async () => {
+test('グループ：作成・参加・NGワード・かんたん診断の結果だけ保存・抜ける・外す・締め切る・消す・上限・期限切れ', async () => {
   const DB = fakeD1();
   const env = { DB };
   assert.equal((await groupCreate({ request: post('/api/groups', { name: 'バカの集まり' }), env })).status, 400);
@@ -352,38 +388,59 @@ test('グループ：作成・参加・NGワード・かんたん診断の結果
   assert.match(created.admin, /^[a-z0-9]{16}$/);
   const params = { id: created.id };
   const join = (body, headers) => groupJoin({ params, request: post(`/api/groups/${created.id}`, body, headers), env });
-  assert.equal((await join({ id: 'abc123def', nick: 'ゆう', code: '6~-3_5_-7_1' })).status, 200);
-  assert.equal((await join({ id: 'zzz999yyy', nick: 'けん', code: 'f~9_9_3_-5~123456' })).status, 200);
-  assert.equal((await join({ id: 'ngngng111', nick: 'キモい', code: '6~-3_5_-7_1' })).status, 400);
-  assert.equal((await join({ id: 'bad', nick: 'x', code: '<b>' })).status, 400);
-  // くわしい診断のパラメータは保存しない
-  assert.equal(DB.raw.prepare("SELECT code FROM members WHERE member_id = 'zzz999yyy'").get().code, 'f~9_9_3_-5');
-  // 同じIDなら更新（人数は増えない）
-  assert.equal((await join({ id: 'abc123def', nick: 'ゆうゆう', code: '6~-3_5_-7_1' })).status, 200);
-  const g = await (await groupGet({ params, request: req(`/api/groups/${created.id}?me=abc123def`), env })).json();
+  const get = (headers = {}) => groupGet({ params, request: req(`/api/groups/${created.id}`, { headers }), env }).then((r) => r.json());
+  const yu = 'yusecret00000000aa';
+  const ken = 'kensecret0000000bb';
+  assert.equal((await join({ secret: yu, nick: 'ゆう', code: '6~-3_5_-7_1' })).status, 200);
+  assert.equal((await join({ secret: ken, nick: 'けん', code: 'f~9_9_3_-5~123456' })).status, 200);
+  assert.equal((await join({ secret: 'ngsecret00000000cc', nick: 'キモい', code: '6~-3_5_-7_1' })).status, 400);
+  assert.equal((await join({ secret: 'short', nick: 'x', code: '6~-3_5_-7_1' })).status, 400);
+  assert.equal((await join({ secret: yu, nick: 'x', code: '<b>' })).status, 400);
+  // 秘密そのものは保存しない。くわしい診断のパラメータも保存しない
+  const rows = DB.raw.prepare('SELECT member_id, handle, code FROM members ORDER BY created_at').all();
+  assert.ok(rows.every((r) => r.member_id !== yu && r.member_id !== ken && /^[0-9a-f]{32}$/.test(r.member_id)));
+  assert.equal(rows[1].code, 'f~9_9_3_-5');
+  // 同じ秘密なら更新（人数は増えない）
+  assert.equal((await join({ secret: yu, nick: 'ゆうゆう', code: '6~-3_5_-7_1' })).status, 200);
+  const g = await get({ 'x-member': yu });
   assert.equal(g.name, 'いつメンscript');
   assert.equal(g.admin, false);
   assert.equal(g.members.length, 2);
-  assert.equal(g.members[0].id, 'abc123def');
+  assert.equal(g.members[0].mine, true);
   assert.equal(g.members[0].nick, 'ゆうゆう');
-  assert.notEqual(g.members[1].id, 'zzz999yyy');
+  assert.equal(g.members[1].mine, false);
+  assert.ok(!JSON.stringify(g).includes(rows[0].member_id), 'ハッシュも返さない');
   assert.ok(g.expiresAt > Date.now());
-  // 作った人だけが、本当のメンバーIDを見て外せる
-  const asAdmin = await (await groupGet({ params, request: req(`/api/groups/${created.id}?admin=${created.admin}`), env })).json();
+  // 作った人でも、ほかの人の秘密は見えない。見えるのは handle だけで、handle では名前を書きかえられない
+  const asAdmin = await get({ 'x-admin': created.admin });
   assert.equal(asAdmin.admin, true);
-  assert.equal(asAdmin.members[1].id, 'zzz999yyy');
-  assert.equal((await groupDelete({ params, request: del(`/api/groups/${created.id}`, { admin: 'wrongwrongwrong1', member: 'zzz999yyy' }), env })).status, 403);
-  assert.equal((await groupDelete({ params, request: del(`/api/groups/${created.id}`, { admin: created.admin, member: 'zzz999yyy' }), env })).status, 200);
+  const kenHandle = asAdmin.members[1].handle;
+  assert.match(kenHandle, /^[a-z0-9]{8}$/);
+  assert.equal((await join({ secret: kenHandle.padEnd(16, '0'), nick: 'のっとり', code: '6~-3_5_-7_1' })).status, 200, '別の人として参加になるだけ');
+  assert.equal((await get()).members.find((m) => m.handle === kenHandle).nick, 'けん', 'けんの名前は変わらない');
+  // 別のグループでは、同じ端末でも別人として扱う（グループをまたいで追いかけられない）
+  assert.equal((await groupDelete({ params, request: del(`/api/groups/${created.id}`, { admin: 'wrongwrongwrong1', handle: kenHandle }), env })).status, 403);
+  assert.equal((await groupDelete({ params, request: del(`/api/groups/${created.id}`, { admin: created.admin, handle: kenHandle }), env })).status, 200);
+  assert.equal((await get()).members.length, 2);
+  // 締め切ると、新しい人は参加できない（いる人の更新はできる）
+  const { onRequestPatch: groupPatch } = await import('../functions/api/groups/[id].js');
+  const patch = (body) => groupPatch({ params, request: req(`/api/groups/${created.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }), env });
+  assert.equal((await patch({ admin: 'nope', locked: true })).status, 403);
+  assert.equal((await patch({ admin: created.admin, locked: true })).status, 200);
+  assert.equal((await get()).locked, true);
+  assert.equal((await join({ secret: ken, nick: 'けん', code: '6~-3_5_-7_1' })).status, 403, '外された人も、締め切り中は戻れない');
+  assert.equal((await join({ secret: yu, nick: 'ゆう', code: '6~-3_5_-7_1' })).status, 200, 'いる人は更新できる');
+  await patch({ admin: created.admin, locked: false });
   // 自分で抜ける
-  assert.equal((await groupDelete({ params, request: del(`/api/groups/${created.id}`, { id: 'abc123def' }), env })).status, 200);
-  assert.equal((await (await groupGet({ params, request: req(`/api/groups/${created.id}`), env })).json()).members.length, 0);
+  assert.equal((await groupDelete({ params, request: del(`/api/groups/${created.id}`, { secret: yu }), env })).status, 200);
+  assert.equal((await get()).members.length, 1);
   // 50人で満員（回数制限に当たらないよう、残りはDBに直接入れる）
-  const ins = DB.raw.prepare('INSERT INTO members (group_id, member_id, nick, code, created_at) VALUES (?1, ?2, ?3, ?4, ?5)');
-  for (let i = 0; i < 50; i++) ins.run(created.id, `member${String(i).padStart(4, '0')}`, `m${i}`, '6~-3_5_-7_1', Date.now() + i);
-  assert.equal((await join({ id: 'latecomer1', nick: 'おそい', code: '6~-3_5_-7_1' })).status, 409);
+  const ins = DB.raw.prepare('INSERT INTO members (group_id, member_id, handle, nick, code, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)');
+  for (let i = 0; i < 49; i++) ins.run(created.id, `hash${i}`, `hd${String(i).padStart(6, '0')}`, `m${i}`, '6~-3_5_-7_1', Date.now() + i);
+  assert.equal((await join({ secret: 'latecomer0000000dd', nick: 'おそい', code: '6~-3_5_-7_1' })).status, 409);
   // 同じWi-Fiから21人目も参加できる（IPごとの上限は1分60回）
   const g2 = await (await groupCreate({ request: post('/api/groups', { name: '部活' }, { 'cf-connecting-ip': '10.0.0.9' }), env })).json();
-  const join2 = (i) => groupJoin({ params: { id: g2.id }, request: post(`/api/groups/${g2.id}`, { id: `student${String(i).padStart(3, '0')}`, nick: `s${i}`, code: '6~-3_5_-7_1' }), env });
+  const join2 = (i) => groupJoin({ params: { id: g2.id }, request: post(`/api/groups/${g2.id}`, { secret: `student${String(i).padStart(9, '0')}`, nick: `s${i}`, code: '6~-3_5_-7_1' }), env });
   for (let i = 0; i < 30; i++) assert.equal((await join2(i)).status, 200, `${i + 1}人目`);
   // 作った人がグループを消す
   assert.equal((await groupDelete({ params, request: del(`/api/groups/${created.id}`, { admin: created.admin, all: true }), env })).status, 200);
@@ -392,6 +449,17 @@ test('グループ：作成・参加・NGワード・かんたん診断の結果
   // 90日を過ぎたら見えない
   DB.raw.prepare('UPDATE groups SET created_at = ?1 WHERE id = ?2').run(Date.now() - 91 * 24 * 3600 * 1000, g2.id);
   assert.equal((await groupGet({ params: { id: g2.id }, request: req(`/api/groups/${g2.id}`), env })).status, 404);
+});
+
+test('NGワード：表記ゆれ（半角・全角・空白・見えない文字）も弾き、よくある名前は通す', async () => {
+  const { hasNgWord, cleanText } = await import('../functions/_lib/http.js');
+  for (const bad of ['バカ', 'ﾊﾞｶ', 'ば か', 'ば\u200bか', 'ＢＡＫＡ', '馬鹿', 'ブサイク', '死んで', 'ばーか', 'ＦＵＣＫ', '3年2組の高校']) {
+    assert.ok(hasNgWord(bad), bad);
+  }
+  for (const ok of ['かすみ', 'カスミ', 'くずは', 'きもちいい', 'カステラ部', 'ぼっち・ざ・ろっく', '殺せんせー推し', 'ゆう', 'あお']) {
+    assert.ok(!hasNgWord(ok), ok);
+  }
+  assert.equal(cleanText('ゆ\u202eう\u200b<b>', 10), 'ゆうb');
 });
 
 test('今週のお題：今週にだけ投票でき、30票に満たない集計は出さない', async () => {

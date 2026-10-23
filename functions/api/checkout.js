@@ -1,4 +1,4 @@
-// POST /api/checkout {plan, index, rid} — Stripe Checkout のセッションを作り、支払いページのURLを返す。
+// POST /api/checkout {plan, index, rid, ab} — Stripe Checkout のセッションを作り、支払いページのURLとセッションIDを返す。
 // rid は「おうちの人に払ってもらう」ときの受け取りID。支払い後、子どもの端末がこのIDで完全版を受け取る。
 // 画面に出している価格と、Stripe に登録した価格がちがうときは販売しない（表示と請求額のずれを防ぐ）。
 import { json, readJson, rateLimited, crossSite } from '../_lib/http.js';
@@ -59,5 +59,6 @@ export async function onRequestPost({ request, env }) {
   });
   const session = await res.json();
   if (!res.ok || !session.url) return json({ error: 'stripe' }, 502);
-  return json({ url: session.url });
+  // Session ID も返す。ブラウザは決済へ移る前にこれを覚えておき、/thanks/ に戻れなかったときも受け取れるようにする
+  return json({ url: session.url, id: session.id });
 }

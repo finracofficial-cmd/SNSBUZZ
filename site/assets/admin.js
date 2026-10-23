@@ -81,6 +81,9 @@ function daily(c) {
     <p class="hint">${series.map(([n, , color]) => `<span style="color:${color}">■</span> ${n}`).join('　')}（日本時間の日付。支払い完了は別の目盛りで、最大 ${maxPaid}件）</p>`;
 }
 
+// 判定は、各案の表示が先に決めた人数に達してから1回だけ（途中で何度も見て、差が出たところで止めると、
+// 本当は差がなくても「差あり」と出やすくなる）。購入率3%前後で1ポイントの差を見るには、各案およそ5,000人
+const AB_TARGET = 5000;
 function abTable(c) {
   return Object.entries(EXPERIMENTS)
     .map(([name, variants]) => {
@@ -92,10 +95,11 @@ function abTable(c) {
       const [a, b] = rows;
       const pPaid = a && b ? twoProportion(a.paid, a.exposure, b.paid, b.exposure) : null;
       const pCheckout = a && b ? twoProportion(a.checkout, a.exposure, b.checkout, b.exposure) : null;
-      const verdict = (p) => (p == null ? 'まだ判断できない（各案30人未満）' : p < 0.05 ? `差がありそう（p=${p.toFixed(3)}）` : `差はまだ見えない（p=${p.toFixed(3)}）`);
+      const reached = rows.every((r) => r.exposure >= AB_TARGET);
+      const verdict = (p) => (!reached ? 'まだ判定しない' : p == null ? '判断できない' : p < 0.05 ? `差がありそう（p=${p.toFixed(3)}）` : `差は見えない（p=${p.toFixed(3)}）`);
       return `<h3>${esc(name)}</h3><table class="kpi"><tr><th>案</th><th>表示</th><th>購入案内</th><th>決済へ</th><th>支払い</th><th>支払い率</th></tr>${rows
         .map((r) => `<tr><td>${esc(r.v)}</td><td>${r.exposure}</td><td>${r.cta}</td><td>${r.checkout}</td><td>${r.paid}</td><td>${pct(r.paid, r.exposure)}</td></tr>`)
-        .join('')}</table><p class="hint">決済へ進んだ率：${verdict(pCheckout)}／支払い率：${verdict(pPaid)}。購入率1〜2%の差を見分けるには、各案で数千人の表示が必要です。</p>`;
+        .join('')}</table><p class="hint">決済へ進んだ率：${verdict(pCheckout)}／支払い率：${verdict(pPaid)}。${reached ? '' : `判定は、各案の表示が${AB_TARGET.toLocaleString('ja-JP')}人に達してから（いま ${rows.map((r) => r.exposure).join('・')}人）。途中で止めて結論を出さないでください。`}</p>`;
     })
     .join('');
 }

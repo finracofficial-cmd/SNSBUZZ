@@ -2,7 +2,7 @@
 // コードは環境変数 PROMO_CODES にカンマ区切りで入れる（例: "OSHI2027:2027-03-31,SCHOOLFES"）。
 // コードを消すか期限を過ぎると、そのコードで開いた人も読めなくなる（/api/premium で確かめる）。
 import { json, readJson, rateLimited, crossSite } from '../_lib/http.js';
-import { issueToken, promoCodes, tokenCookie } from '../_lib/token.js';
+import { issueToken, promoCodes, cookieHeaderFor } from '../_lib/token.js';
 
 export async function onRequestPost({ request, env }) {
   if (!env.PREMIUM_SECRET) return json({ error: 'disabled' }, 503);
@@ -15,5 +15,5 @@ export async function onRequestPost({ request, env }) {
     await env.DB.prepare('INSERT INTO counters (k, n) VALUES (?1, 1) ON CONFLICT(k) DO UPDATE SET n = n + 1').bind(`premium:code:${code}`).run();
   }
   const token = await issueToken(env, `promo-${code}`.replace(/[^\w-]/g, '').slice(0, 60));
-  return json({ token }, 200, { 'set-cookie': tokenCookie(token), 'cache-control': 'no-store' });
+  return json({ token }, 200, { 'cache-control': 'no-store', ...(await cookieHeaderFor(env, request, token)) });
 }

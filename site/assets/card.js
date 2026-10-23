@@ -337,8 +337,14 @@ export async function drawOgCard(index) {
   return canvas;
 }
 
+// PNG にしたら、キャンバスのメモリはすぐ手放す（古い iPhone は、キャンバスの合計メモリに上限がある）
 export const canvasToBlob = (canvas) =>
-  new Promise((resolve) => canvas.toBlob((b) => resolve(b), 'image/png'));
+  new Promise((resolve) =>
+    canvas.toBlob((b) => {
+      resolve(b);
+      canvas.width = 0;
+      canvas.height = 0;
+    }, 'image/png'));
 
 // トップページ用OGP 1200×630
 export async function drawTopOg() {

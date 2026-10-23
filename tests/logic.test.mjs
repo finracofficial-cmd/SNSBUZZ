@@ -275,6 +275,10 @@ test('続きリンク：結果・図鑑・隠しタイプを往復でき、お�
   assert.deepEqual(back.hidden, [19]);
   assert.equal(importPayload('!!!'), null);
   assert.equal(importPayload(btoa('{"q":"<script>","m":"x"}')).quick, null);
+  // 配列などの形は捨てる（保存すると結果ページが開けなくなる）
+  const arr = importPayload(btoa(JSON.stringify({ q: [quick], d: ['f~1_1_1_1~6a4c28'] })));
+  assert.equal(arr.quick, null);
+  assert.equal(arr.detail, null);
 });
 
 test('いまの二つ名：深夜はカウントダウンなし。「次に変わる」と出した時刻には、本当に言葉が変わる', async () => {

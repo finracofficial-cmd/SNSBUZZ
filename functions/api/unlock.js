@@ -3,7 +3,7 @@
 // アドレスバーに残った sid から他人が受け取らないよう、受け取れるのは決済から24時間まで。
 // ふたり用のプレゼント券は、ここでは返さない（買った人のトークンで /api/gift から受け取る）。
 import { json, rateLimited } from '../_lib/http.js';
-import { premiumEnabled, tokenCookie } from '../_lib/token.js';
+import { premiumEnabled, cookieHeaderFor } from '../_lib/token.js';
 import { isOurSession, recordPurchase } from '../_lib/purchase.js';
 
 const WINDOW = 24 * 3600 * 1000;
@@ -26,6 +26,6 @@ export async function onRequestGet({ request, env }) {
   return json(
     { token: p.token, plan: p.plan, forChild: !!session.client_reference_id },
     200,
-    { 'set-cookie': tokenCookie(p.token), 'cache-control': 'no-store' },
+    { 'cache-control': 'no-store', ...(await cookieHeaderFor(env, request, p.token)) },
   );
 }

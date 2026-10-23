@@ -64,7 +64,7 @@ function compatSection(index, r) {
   const t = TYPES[index];
   const base = r ? r.baseIndex : isHidden(index) ? null : index;
   const ranking = base == null ? [] : compatRanking(base).filter((x) => x.index !== base);
-  const myCode = r ? encodeResult(r) : '';
+  const myCode = r ? quickCodeOf(encodeResult(r)) : '';
   const fr = r
     ? friends()
         .slice(0, 12)
@@ -368,7 +368,7 @@ export function viewZukan() {
     ${mine ? '<button class="btn type" data-invite-mine style="margin-top:20px">友達を誘ってシールを集める</button>' : '<button class="btn" data-go="#/q" style="margin-top:20px">診断する</button>'}
     ${mine ? `<section class="card carry"><h2>ほかのブラウザでも続きから</h2>
       <p class="hint">LINEの中のブラウザと Safari・Chrome では、保存場所が別です。このリンクを LINE の Keep メモに送っておくと、どちらでも結果とシール帳の続きから遊べます。ほかの人には送らないでね。</p>
-      <a class="btn sub small" data-ch="carry:line" href="https://line.me/R/share?text=${encodeURIComponent(`ポンコツ図鑑の続きリンク（自分用）\n${ORIGIN}/#/me/${exportPayload({ mineQuick: store.get('mineQuick', null), mineDetail: store.get('mineDetail', null), met, gotHidden: store.get('gotHidden', []) })}`)}" target="_blank" rel="noopener">LINE の Keep メモに送る</a>
+      <a class="btn sub small" data-ch="carry:line" href="https://line.me/R/share?text=${encodeURIComponent(`ポンコツ図鑑の続きリンク（自分用）\n${ORIGIN}/?openExternalBrowser=1#/me/${exportPayload({ mineQuick: store.get('mineQuick', null), mineDetail: store.get('mineDetail', null), met, gotHidden: store.get('gotHidden', []) })}`)}" target="_blank" rel="noopener">LINE の Keep メモに送る</a>
     </section>` : ''}
     ${foot()}`);
   app.querySelector('[data-invite-mine]')?.addEventListener('click', () => {

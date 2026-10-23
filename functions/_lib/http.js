@@ -61,13 +61,32 @@ export const RESULT_CODE = /^[0-9a-j]~-?\d_-?\d_-?\d_-?\d(?:~[0-9a-c]{6})?$/;
 // グループに保存するのは、かんたん診断の部分だけ（くわしい診断のパラメータは保存しない）
 export const quickCode = (code) => code.split('~').slice(0, 2).join('~');
 
+// 見えない文字（ゼロ幅・文字の向きを変える制御文字）。名前の見た目を崩したり、NGワードをすり抜けたりできるので落とす
+const INVISIBLE = /[\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]/g;
+// ニックネーム・グループ名をきれいにする（制御文字・< > ・見えない文字を落とし、前後の空白を取り、文字数で切る）
+export const cleanText = (s, max) =>
+  Array.from(String(s ?? '').replace(/[\u0000-\u001f\u007f<>]/g, '').replace(INVISIBLE, '').trim())
+    .slice(0, max)
+    .join('');
+
+// NGワードの照合用に、表記をそろえる：全角・半角（NFKC）→ カタカナをひらがなへ → 空白・記号・のばし棒を除く → 小文字
+const normalize = (s) =>
+  String(s)
+    .normalize('NFKC')
+    .replace(INVISIBLE, '')
+    .replace(/[\u30a1-\u30f6]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0x60))
+    .replace(/[\s・･.,、。!！?？~〜ー\-_*＊/／|｜'"`]/g, '')
+    .toLowerCase();
 // ニックネーム・グループ名に使えない言葉（悪口・個人を特定しやすい語の代表例）
 const NG_NAMES = [
-  'ばか', 'バカ', 'あほ', 'アホ', 'ぶす', 'ブス', 'でぶ', 'デブ', 'きも', 'キモ', 'うざ', 'ウザ', 'しね', '死ね', '氏ね', 'ころす', '殺',
-  'くず', 'クズ', 'ごみ', 'ゴミ', 'かす', 'カス', 'ぼっち', 'ボッチ', '陰キャ', 'いじめ', 'イジメ', '消えろ', 'きえろ', 'fuck', 'shit',
+  'ばか', '馬鹿', 'あほ', '阿呆', 'ぶす', 'ぶさいく', '不細工', 'でぶ', 'きも', 'うざ', 'しね', '死ね', '氏ね', '死んで', 'ころす', '殺',
+  'くず', 'ごみ', 'かす', 'ぼっち', '陰きゃ', 'いじめ', '消えろ', 'きえろ', 'baka', 'fuck', 'shit',
   '小学校', '中学校', '高校', '学園', '大学',
-];
+].map(normalize);
+// NGワードを含んでいても使ってよい言葉（名前や作品名でよくあるもの）
+const ALLOWED = ['きもち', 'きもの', 'かすみ', 'かすたーど', 'かすてら', 'くずは', 'くずもち', 'ぼっちざろっく', '殺せんせー', 'しねま'].map(normalize);
 export const hasNgWord = (s) => {
-  const t = String(s).toLowerCase();
-  return NG_NAMES.some((w) => t.includes(w.toLowerCase()));
+  let t = normalize(s);
+  ALLOWED.forEach((w) => (t = t.split(w).join('')));
+  return NG_NAMES.some((w) => t.includes(w));
 };

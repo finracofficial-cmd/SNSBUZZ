@@ -94,5 +94,10 @@ export async function recordReveal(card, { seconds = 6, intro = 'わたしのポ
   recorder.stop();
   await done;
   stream.getTracks().forEach((tr) => tr.stop());
+  // キャンバスのメモリはすぐ手放す（古い iPhone は、キャンバスの合計メモリに上限がある）
+  [card, out, blurred].forEach((c) => {
+    c.width = 0;
+    c.height = 0;
+  });
   return new Blob(chunks, { type: type.split(';')[0] });
 }

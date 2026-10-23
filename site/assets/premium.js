@@ -9,7 +9,8 @@
 import { SITE } from './config.js';
 import { TYPES } from './data.js';
 import { ORIGIN, esc, store, api, toast, openModal, closeModal, track, copyText, inAppBrowser, navNow } from './ui.js';
-import { abTrack, abTag } from './ab.js';
+import { abTrack, abTag, abCode, abTagOfCode } from './ab.js';
+import { quizActive } from './quiz.js';
 
 const METHOD_NAMES = { card: 'クレジットカード（Apple Pay・Google Pay をふくむ）', paypay: 'PayPay' };
 const FALLBACK = { enabled: false, plans: [{ id: 'solo', price: SITE.premiumPrice, name: 'じぶん用', available: false }], methods: ['card'] };
@@ -27,6 +28,8 @@ export const priceOf = (s, id = 'solo') => s.plans?.find((p) => p.id === id)?.pr
 
 export const token = () => store.get('premiumToken', null);
 export const hasPremium = () => !!token();
+// キャンペーンのコード（期限つき）ではなく、購入・プレゼントで持っているトークン
+const lastingToken = () => (/^v1\.(?!promo-)/.test(token() || '') ? token() : null);
 
 // 静的プレビュー（APIなし）でだけ使う見本データ
 const preview = () => globalThis.PZ_PREVIEW_PREMIUM || null;
@@ -86,7 +89,20 @@ export async function restorePurchase() {
   const res = await api('restore', { timeout: 3000 });
   if (!res?.token) return false;
   store.set('premiumToken', res.token);
+  if (res.plan) store.set('plan', res.plan);
   return true;
+}
+
+// いまのトークンを Cookie にも入れてもらい、プラン（ふたり用か）を受け取る。
+// 引き継ぎリンク・コード・サポートのリンクで開いた端末も、データが消えたときに Cookie から戻せるように。1日1回まで
+export async function adoptToken(t = token(), force = false) {
+  if (!t || preview()) return;
+  const day = new Date().toDateString();
+  if (!force && store.get('adoptedOn', null) === day) return;
+  const res = await api('adopt', { method: 'POST', token: t });
+  if (!res?.ok) return;
+  store.set('adoptedOn', day);
+  if (res.plan) store.set('plan', res.plan);
 }
 
 // ---------- 購入への入口 ----------
@@ -153,7 +169,7 @@ export async function openPaywall(r, { auto = false } = {}) {
 }
 
 // 特定商取引法の「最終確認画面」に必要な6項目を、決済ページへ進む前にまとめて見せる
-function confirmPurchase(r, plan, s, rid = '') {
+function confirmPurchase(r, plan, s, rid = '', guardianAb = '') {
   const gift = plan.id === 'duo';
   const sheet = openModal(`
     <h2 class="sheet-title">ご購入内容の確認</h2>
@@ -186,8 +202,8 @@ function confirmPurchase(r, plan, s, rid = '') {
     }
     const button = sheet.querySelector('#buy-go');
     button.disabled = true;
-    // おうちの人の支払い（rid あり）は、子どもの端末のA/Bテストとは別の端末なので目印を付けない
-    const res = await api('checkout', { method: 'POST', body: { plan: plan.id, index: r?.index ?? null, rid, ab: rid ? '' : abTag() }, timeout: 8000 });
+    // おうちの人の支払い（rid あり）は、子どもの端末のA/Bテストの案（リンクに入っている）で数える
+    const res = await api('checkout', { method: 'POST', body: { plan: plan.id, index: r?.index ?? null, rid, ab: rid ? guardianAb : abTag() }, timeout: 8000 });
     if (!res?.url) {
       msg.textContent = res?.error === 'rate' ? '少し待ってから、もう一度ためしてください' : 'いまは購入できません。時間をおいて試してください';
       button.disabled = false;
@@ -195,7 +211,10 @@ function confirmPurchase(r, plan, s, rid = '') {
     }
     track('premium', 'checkout');
     if (!rid) abTrack('checkout');
-    store.set('returnHash', rid ? '#/buy/done' : location.hash || '#/');
+    // やめて戻ってきたときの戻り先。おうちの人は、おうちの人のページへ（完了の画面には、受け取れたときだけ移る）
+    store.set('returnHash', location.hash || '#/');
+    // 決済のあと /thanks/ が開かなかったとき（アプリの切りかえ・タブを閉じた）も、次に開いたとき受け取れるように覚えておく
+    if (res.id) store.set('pendingSid', { sid: res.id, at: Date.now() });
     location.href = res.url;
   };
 }
@@ -211,28 +230,37 @@ async function claimIdOf(secret) {
   return Array.from({ length: 16 }, (_, i) => B32[parseInt(bits.slice(i * 5, i * 5 + 5), 2)]).join('');
 }
 
-// 受け取りIDは7日で無効（サーバー側の claims と同じ期限）
-const CLAIM_TTL = 7 * 24 * 3600 * 1000;
-function currentClaim() {
-  const c = store.get('claim', null);
-  if (!c || !/^[a-z2-7]{26}$/.test(c.s || '') || !/^[a-z2-7]{16}$/.test(c.rid || '') || Date.now() - c.at > CLAIM_TTL) return null;
-  return c;
+// おうちの人に送るリンクは作ってから7日で無効（おうちの人のページで販売しない）。
+// サーバーは支払いから7日間トークンを預かるので、端末は作ってから14日間まで確かめる。
+// 新しくお願いしても、前のお願い（期限内に払われたかもしれない）も確かめられるよう、2つまで残す
+const DAY = 24 * 3600 * 1000;
+const LINK_DAYS = 7;
+const CLAIM_TTL = 14 * DAY;
+function pendingClaims() {
+  const raw = store.get('claims', null) ?? [store.get('claim', null)].filter(Boolean);
+  return (Array.isArray(raw) ? raw : [])
+    .filter((c) => c && /^[a-z2-7]{26}$/.test(c.s || '') && /^[a-z2-7]{16}$/.test(c.rid || '') && Date.now() - c.at <= CLAIM_TTL)
+    .slice(0, 2);
 }
 
 async function askGuardian(s) {
-  let c = currentClaim();
+  let claims = pendingClaims();
+  let c = claims.find((x) => Date.now() - x.at <= LINK_DAYS * DAY - DAY);
   if (!c) {
     const secret = randomSecret();
     c = { s: secret, rid: await claimIdOf(secret), at: Date.now() };
-    store.set('claim', c);
+    claims = [c, ...claims].slice(0, 2);
+    store.set('claims', claims);
+    store.set('claim', null);
   }
-  const url = `${ORIGIN}/#/buy/${c.rid}`;
+  // リンクには、作った日（期限の確認用）と、この端末のA/Bテストの案を入れる。結果や回答は入れない
+  const url = `${ORIGIN}/#/buy/${c.rid}/${Math.floor(c.at / DAY).toString(36)}/${abCode()}`;
   const text = `「${SITE.quizName}」の完全版（${priceOf(s)}円）を買ってもらえませんか？ このリンクから支払うと、このスマホで読めるようになります`;
   track('paywall', 'ask');
   openModal(`
     <h2 class="sheet-title">おうちの人に払ってもらう</h2>
     <p>このリンクをおうちの人に送ってね。おうちの人のスマホで支払いが終わると、<b>このスマホで自動的に完全版が開きます</b>（このページを開いたままでも、あとで開いても大丈夫）。</p>
-    <p class="hint">おうちの人には、あなたの診断結果や回答は見えません。リンクは7日間有効です。このスマホでしか受け取れないので、ほかの人に転送されても大丈夫です。</p>
+    <p class="hint">おうちの人には、あなたの診断結果や回答は見えません。リンクは${new Date(c.at + LINK_DAYS * DAY).toLocaleDateString('ja-JP')}まで有効です。このスマホでしか受け取れないので、ほかの人に転送されても大丈夫です。</p>
     <div class="share-row">
       <button class="share-btn" data-ch="ask:link" data-copy="${esc(`${text}\n${url}`)}">コピー</button>
       <button class="share-btn" data-ch="ask:native" data-native-text="${esc(text)}" data-native-url="${esc(url)}">送る</button>
@@ -242,11 +270,20 @@ async function askGuardian(s) {
 }
 
 // おうちの人が開くページ（子どもの回答は見せない）
-export async function viewBuyFor(rid, render) {
+export async function viewBuyFor(rid, render, created = '', ab = '') {
   const gen = navNow();
   const s = await premiumStatus();
   if (gen !== navNow()) return;
   const plans = s.plans.filter((p) => p.available);
+  const madeOn = /^[0-9a-z]{1,6}$/.test(created) ? parseInt(created, 36) : null;
+  if (madeOn != null && Date.now() - madeOn * DAY > LINK_DAYS * DAY) {
+    render(`<section class="card">
+      <h1 class="sheet-title">このリンクの期限が切れています</h1>
+      <p>お願いのリンクは、作ってから${LINK_DAYS}日間だけ使えます。お手数ですが、お子さまにもう一度リンクを送ってもらってください。</p>
+      <p class="hint"><a href="#/legal">特定商取引法に基づく表記</a></p>
+    </section>`);
+    return;
+  }
   render(`
     <section class="card">
       <h1 class="sheet-title">${esc(SITE.quizName)} 完全版のご案内</h1>
@@ -259,7 +296,7 @@ export async function viewBuyFor(rid, render) {
         : '<p class="hint center">いまは販売の準備中です。</p>'}
       <p class="hint"><a href="#/legal">特定商取引法に基づく表記</a></p>
     </section>`);
-  document.querySelector('[data-buy-for]')?.addEventListener('click', () => confirmPurchase(null, plans[0], s, rid));
+  document.querySelector('[data-buy-for]')?.addEventListener('click', () => confirmPurchase(null, plans[0], s, rid, abTagOfCode(ab)));
 }
 
 // 子どもの端末：おうちの人の支払いが終わったか確かめる（開いている間だけ、ときどき）。
@@ -268,8 +305,7 @@ let claimTimer = null;
 let claimDone = null;
 export function watchClaim(onUnlocked) {
   claimDone = onUnlocked;
-  const c = currentClaim();
-  if (!c || hasPremium() || claimTimer) return;
+  if (!pendingClaims().length || hasPremium() || claimTimer) return;
   const started = Date.now();
   const stop = () => {
     clearInterval(claimTimer);
@@ -277,13 +313,17 @@ export function watchClaim(onUnlocked) {
   };
   const tick = async () => {
     if (document.visibilityState === 'visible') {
-      const res = await api(`claim?s=${c.s}`, { timeout: 4000 });
-      if (res?.token) {
+      for (const c of pendingClaims()) {
+        const res = await api(`claim?s=${c.s}`, { timeout: 4000 });
+        if (!res?.token) continue;
         store.set('premiumToken', res.token);
+        store.set('claims', null);
         store.set('claim', null);
         stop();
-        toast('おうちの人の支払いが終わりました。完全版が開きます');
-        claimDone?.();
+        adoptToken(res.token, true);
+        // 診断の途中なら、知らせるだけにして画面は描き直さない（答えが消えないように）
+        toast(quizActive() ? 'おうちの人の支払いが終わりました。診断のあとで完全版が読めます' : 'おうちの人の支払いが終わりました。完全版が開きます');
+        if (!quizActive()) claimDone?.();
         return;
       }
     }
@@ -297,23 +337,65 @@ export function watchClaim(onUnlocked) {
 export const transferUrl = (t) => `${ORIGIN}/#/unlock/${encodeURIComponent(t)}`;
 const giftUrl = (g) => `${ORIGIN}/#/gift/${encodeURIComponent(g)}`;
 
+// 引き継ぎリンク・サポートのリンク。この端末にもう読める購入があれば、置きかえない
+// 返り値: 'ok' / 'same'（同じもの）/ 'has'（ほかの有効な購入を持っている）/ 'invalid'
 export async function acceptToken(t) {
-  if (!/^v1\.[\w-]{4,100}\.[\w-]{20,}$/.test(t || '')) return false;
+  if (!/^v1\.[\w-]{4,100}\.[\w-]{20,}$/.test(t || '')) return 'invalid';
+  const current = lastingToken();
+  if (token() === t) return 'same';
+  if (current) {
+    const mine = await api('premium?i=0', { token: current });
+    if (mine && !mine.error) return 'has';
+  }
   const check = await api('premium?i=0', { token: t });
-  if (!check || check.error) return false;
+  if (!check || check.error) return 'invalid';
   store.set('premiumToken', t);
-  return true;
+  await adoptToken(t, true);
+  return 'ok';
 }
 
-// プレゼント券を、自分の購入トークンと交換する（最初の1人だけ）
+// プレゼント券を、自分の購入トークンと交換する（最初の1人だけ）。開いただけでは交換せず、ボタンを押したときだけ呼ぶ
+// 返り値: 'ok' / 'used'（もう受け取られた）/ 'own'（買った本人）/ 'has'（もう完全版を持っている）/ 'invalid'
 export async function acceptGift(g) {
   if (!/^v1\.gift-[\w-]{4,100}\.[\w-]{20,}$/.test(g || '')) return 'invalid';
-  const res = await api('gift', { method: 'POST', body: { gift: g } });
+  const res = await api('gift', { method: 'POST', body: { gift: g }, token: token() || undefined });
   if (res?.token) {
     store.set('premiumToken', res.token);
+    store.set('plan', 'solo');
     return 'ok';
   }
-  return res?.error === 'used' ? 'used' : 'invalid';
+  return ['used', 'own', 'has'].includes(res?.error) ? res.error : 'invalid';
+}
+export const GIFT_MESSAGES = {
+  ok: 'プレゼントを受け取りました。完全版が開きます',
+  used: 'このプレゼントは、もう受け取られています',
+  own: 'これは、あなたが友達に贈るプレゼントのリンクです。受け取ってほしい友達に送ってね',
+  has: 'この端末では、もう完全版が読めます。このリンクは、まだ持っていない友達に送ってね',
+  invalid: 'リンクを確認できませんでした',
+};
+
+// プレゼントのリンクを開いたページ。受け取りはボタンを押してから（買った本人が確かめに開いても、消えないように）
+export function viewGift(g, { render, brand, foot }) {
+  const mine = !!lastingToken();
+  render(`${brand()}<section class="card center gift-page">
+    <h1 class="sheet-title">完全版のプレゼントが届いています</h1>
+    <p>${esc(SITE.quizName)}の完全版（くわしい診断のレポート全8章）を、友達が贈ってくれました。<b>受け取れるのは1人だけ</b>です。</p>
+    ${mine
+      ? `<p class="hint">${esc(GIFT_MESSAGES.has)}</p><a class="btn sub" href="#/">トップへ</a>`
+      : '<button class="btn gold" data-accept-gift>受け取る</button><p class="hint">受け取ると、このブラウザで完全版が読めるようになります。</p>'}
+  </section>${foot()}`);
+  const button = document.querySelector('[data-accept-gift]');
+  button?.addEventListener('click', async () => {
+    button.disabled = true;
+    const r = await acceptGift(g);
+    toast(GIFT_MESSAGES[r]);
+    if (r !== 'ok') {
+      button.disabled = false;
+      return;
+    }
+    const m = store.get('mine', null);
+    location.hash = m?.code ? `#/r/${m.code}/${m.shareId}` : '#/d';
+  });
 }
 
 function openRedeem() {
@@ -341,9 +423,12 @@ function openRedeem() {
     if (candidate.startsWith('v1.gift-')) {
       const r = await acceptGift(candidate);
       ok = r === 'ok';
-      if (r === 'used') msg = 'このプレゼントは、もう受け取られています';
-    } else if (candidate.startsWith('v1.')) ok = await acceptToken(candidate);
-    else {
+      if (!ok) msg = GIFT_MESSAGES[r];
+    } else if (candidate.startsWith('v1.')) {
+      const r = await acceptToken(candidate);
+      ok = r === 'ok' || r === 'same';
+      if (r === 'has') msg = 'この端末では、もう完全版が読めます';
+    } else {
       const res = await api('redeem', { method: 'POST', body: { code: candidate } });
       if (res?.token) {
         store.set('premiumToken', res.token);
@@ -392,7 +477,7 @@ export async function openGift() {
 }
 
 // 購入後に見せる：引き継ぎリンクと、ふたり用ならプレゼント
-export function showAfterPurchase({ forChild = false, plan = 'solo' } = {}) {
+export function showAfterPurchase({ forChild = false, plan = 'solo', otherBrowser = false } = {}) {
   const t = token();
   if (!t) return;
   const sheet = openModal(`
@@ -400,6 +485,9 @@ export function showAfterPurchase({ forChild = false, plan = 'solo' } = {}) {
     ${forChild
       ? '<p><b>お子さまのスマホで、完全版が読めるようになりました。</b>表示が変わらないときは、お子さまにページを開き直してもらってください。</p>'
       : '<p>この端末で完全版が読めるようになりました。</p>'}
+    ${otherBrowser && !forChild
+      ? '<p class="hint inapp">購入を始めたのとは別のブラウザで開いています。LINE やインスタの中で購入した場合は、下の引き継ぎリンクをコピーして、そのアプリのトークやメモに貼って開くと、元の場所でも読めます。</p>'
+      : ''}
     ${plan === 'duo' && !forChild ? '<button class="btn type" data-gift>友達へのプレゼントのリンクを出す</button>' : ''}
     ${transferBox(forChild)}
     <button class="btn" data-close>とじる</button>`);
@@ -411,28 +499,38 @@ export const hasGift = () => store.get('plan', null) === 'duo';
 
 // 決済から戻ってきたとき（/thanks/?sid=...）。成功したら戻り先のURLを返す。
 // 失敗しても sid を覚えておき、もう一度確かめられるようにする（次にサイトを開いたときも自動で確かめる）
-export async function completePurchase(sid) {
+export async function completePurchase(sid, { fromThanks = false } = {}) {
   if (!/^cs_\w{10,200}$/.test(sid || '')) return { ok: false, error: 'bad_session' };
-  store.set('pendingSid', { sid, at: Date.now() });
+  const pending = store.get('pendingSid', null);
+  if (pending?.sid !== sid) store.set('pendingSid', { sid, at: Date.now() });
   const res = await api(`unlock?sid=${encodeURIComponent(sid)}`, { timeout: 10000 });
-  if (!res?.token) return { ok: false, error: res?.error || 'network' };
+  if (!res?.token) {
+    // 返金済み・期限切れ・ほかの商品なら、もう確かめない
+    if (['revoked', 'expired', 'not_ours', 'bad_session'].includes(res?.error)) store.set('pendingSid', null);
+    return { ok: false, error: res?.error || 'network' };
+  }
   store.set('premiumToken', res.token);
   store.set('plan', res.plan || 'solo');
   store.set('pendingSid', null);
-  store.set('afterPurchase', { forChild: !!res.forChild, plan: res.plan || 'solo' });
-  const back = store.get('returnHash', '#/');
+  const back = store.get('returnHash', null);
   store.set('returnHash', null);
-  return { ok: true, url: `/${back}` };
+  if (res.forChild) store.set('childPaidAt', Date.now());
+  // returnHash がない＝購入を始めたのとは別のブラウザで /thanks/ が開いた
+  store.set('afterPurchase', { forChild: !!res.forChild, plan: res.plan || 'solo', otherBrowser: fromThanks && !back });
+  return { ok: true, url: res.forChild ? '/#/buy/done' : `/${back || '#/'}` };
 }
 
 // 受け取れていない購入があれば、もう一度確かめる（24時間まで）
+// 決済の画面へ移ったまま /thanks/ に戻らなかった購入も、ここで受け取る（起動時と、アプリから戻ってきたとき。1分に1回まで）
+let lastRetry = 0;
 export async function retryPendingPurchase() {
   const p = store.get('pendingSid', null);
-  if (!p || hasPremium()) return false;
+  if (!p || Date.now() - lastRetry < 60 * 1000) return false;
   if (Date.now() - p.at > 24 * 3600 * 1000) {
     store.set('pendingSid', null);
     return false;
   }
+  lastRetry = Date.now();
   return (await completePurchase(p.sid)).ok;
 }
 
@@ -440,6 +538,7 @@ export async function retryPendingPurchase() {
 export function cancelPurchase() {
   const back = store.get('returnHash', '#/');
   store.set('returnHash', null);
+  store.set('pendingSid', null);
   return `/${back}`;
 }
 

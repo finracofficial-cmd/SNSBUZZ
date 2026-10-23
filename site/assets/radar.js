@@ -1,6 +1,10 @@
 // ステータスのレーダーチャート（SVG）。くわしい診断の10項目を1枚で見せる。
 // masked のときは形だけ見せて、数値は出さない（課金前の「ふんわり」表示）。
 import { AXES, PARAMS, AXIS_MAX } from './data.js';
+import { rankOf } from './logic.js';
+
+// 購入前は、パラメータの形をランクの代表値で描く（本当の数値を図の座標から読めないように）
+const RANK_SHAPE = { S: 92, A: 76, B: 55, C: 33, D: 15 };
 
 const esc = (t) => String(t).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
 
@@ -25,7 +29,8 @@ export function radarSVG(values, { labels, masked = false, size = 300, color = '
     return [c + Math.cos(a) * R * v, c + Math.sin(a) * R * v];
   };
   const ring = (f) => Array.from({ length: n }, (_, k) => pt(k, f).map((x) => x.toFixed(1)).join(',')).join(' ');
-  const poly = values.map((v, k) => pt(k, Math.max(v, 4) / 100).map((x) => x.toFixed(1)).join(',')).join(' ');
+  const shape = values.map((v, k) => (masked && k >= AXES.length ? RANK_SHAPE[rankOf(v)] : v));
+  const poly = shape.map((v, k) => pt(k, Math.max(v, 4) / 100).map((x) => x.toFixed(1)).join(',')).join(' ');
   const texts = labels.map((l, k) => {
     const [x, y] = pt(k, 1.22);
     const anchor = Math.abs(x - c) < 4 ? 'middle' : x > c ? 'start' : 'end';

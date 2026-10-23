@@ -112,16 +112,27 @@ await c.screenshot({ path: path.join(outDir, 'guardian-page.png'), fullPage: tru
 // 4. ふたり用のプレゼント：1人目は受け取れて、2人目は受け取れない
 sql(`INSERT OR REPLACE INTO purchases (id, plan, payment_intent, created_at) VALUES ('cs_test_e2eduo000000', 'duo', 'pi_e2e', ${Date.now()})`);
 const gift = await issueToken(SECRET, 'gift-cs_test_e2eduo000000');
+// 買った本人がリンクを開いても、受け取りのボタンは出ない（プレゼントが消えない）
+const owner = await issueToken(SECRET, 'cs_test_e2eduo000000');
+const o = await phone();
+await o.goto(`${base}/`);
+await o.evaluate((t) => localStorage.setItem('pz:premiumToken', JSON.stringify(t)), owner);
+await o.goto(`${base}/#/gift/${encodeURIComponent(gift)}`);
+await o.waitForSelector('.gift-page');
+check(!(await o.$('[data-accept-gift]')), '完全版を持っている人にも、プレゼントの受け取りボタンが出る');
 const d = await phone();
 await detailResult(d, 9);
 await d.goto(`${base}/#/gift/${encodeURIComponent(gift)}`);
+await d.waitForSelector('[data-accept-gift]');
+check(await d.evaluate(() => !localStorage.getItem('pz:premiumToken')), '開いただけでプレゼントを受け取ってしまう');
+await d.click('[data-accept-gift]');
 check((await toastText(d)).includes('受け取りました'), 'プレゼントを受け取れない');
 await d.waitForFunction(() => document.querySelector('.nickname') && !document.querySelector('.mosaic'), null, { timeout: 8000 });
 const e = await phone();
 await e.goto(`${base}/#/gift/${encodeURIComponent(gift)}`);
+await e.click('[data-accept-gift]');
 check((await toastText(e)).includes('もう受け取られています'), '2人目もプレゼントを受け取れてしまう');
 // 買った人は、プレゼントのリンクを何度でも出し直せる（受け取り済みと表示）
-const owner = await issueToken(SECRET, 'cs_test_e2eduo000000');
 const giftInfo = await e.evaluate(async (t) => (await fetch('/api/gift', { headers: { authorization: `Bearer ${t}` } })).json(), owner);
 check(giftInfo.used === true, 'プレゼントの受け取り済みが記録されていない');
 
@@ -135,6 +146,18 @@ check(await f.evaluate(() => !!localStorage.getItem('pz:pendingSid')), '受け�
 await f.screenshot({ path: path.join(outDir, 'thanks-retry.png'), fullPage: true });
 await f.goto(`${base}/thanks/?canceled=1`);
 await f.waitForFunction(() => location.pathname === '/' && location.hash === '#/zukan', null, { timeout: 8000 });
+check(await f.evaluate(() => !localStorage.getItem('pz:pendingSid')), 'やめたのに、決済の確認を続けている');
+// おうちの人がやめたときは、おうちの人のページへ戻る（「完了しました」とは出さない）
+await f.evaluate((r) => localStorage.setItem('pz:returnHash', JSON.stringify(`#/buy/${r}`)), rid);
+await f.goto(`${base}/thanks/?canceled=1`);
+await f.waitForFunction((r) => location.hash === `#/buy/${r}`, rid, { timeout: 8000 });
+await f.goto(`${base}/#/buy/done`);
+await f.waitForSelector('.sheet-title');
+check((await f.textContent('.sheet-title')).includes('完了していません'), '払っていないのに「完了しました」と出る');
+// 作ってから7日を過ぎたお願いのリンクでは、販売しない
+await f.goto(`${base}/#/buy/${rid}/${(Math.floor(Date.now() / 864e5) - 8).toString(36)}/000`);
+await f.waitForSelector('.sheet-title');
+check((await f.textContent('.sheet-title')).includes('期限'), '期限切れのお願いリンクで販売画面が出る');
 
 // 6. グループ（くわしい診断の結果でも、保存するのはかんたん診断の部分だけ）・抜ける
 await a.goto(`${base}/`);
@@ -147,10 +170,13 @@ await a.click('#join');
 await a.waitForSelector('.members');
 check((await a.locator('.member').count()) === 1, 'グループに参加できていない');
 const groupId = await a.evaluate(() => location.hash.split('/')[2]);
-const stored = await a.evaluate(async (id) => (await (await fetch(`/api/groups/${id}`)).json()).members[0].code, groupId);
+const fetched = await a.evaluate(async (id) => (await fetch(`/api/groups/${id}`)).text(), groupId);
+const stored = JSON.parse(fetched).members[0].code;
 check(!stored.includes('~', stored.indexOf('~') + 1), `グループにくわしい診断のパラメータが保存されている: ${stored}`);
-a.once('dialog', (dlg) => dlg.accept());
+check(!/secret|member_id/.test(fetched), 'グループの一覧に、本人だけの秘密が入っている');
+check(!!(await a.$('[data-admin-link]')), '作った人に管理用リンクのボタンがない');
 await a.click('[data-leave]');
+await a.click('.modal [data-yes]');
 await a.waitForSelector('#join', { timeout: 8000 });
 check((await a.locator('.member').count()) === 0, 'グループから抜けられない');
 await a.screenshot({ path: path.join(outDir, 'group.png'), fullPage: true });

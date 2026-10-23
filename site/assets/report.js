@@ -91,7 +91,7 @@ function statusChapter(r, prem) {
       ${prem?.params
         ? `<p class="sample">${esc(prem.params[r.nickname.param])}</p>`
         : `<p class="sample">${esc(sampleText.sample)}</p>${mosaic(r.index, 7, sampleText.rest)}
-           <p class="hint">↑ 完全版の解説の見本（前半）です。後半と、ほかの5項目の解説も完全版で読めます。</p>`}
+           <p class="hint">↑ 完全版の解説の見本（書き出し）です。続きと、ほかの5項目の解説も完全版で読めます。</p>`}
     </div>
     <p class="hint">上の4つ（${AXES.map((a) => `${a.neg}⇔${a.pos}`).join('・')}）は、かんたん診断と同じ結果です。</p>`;
 }
@@ -106,7 +106,7 @@ function paramChapter(r, prem) {
       ${prem?.params
         ? `<p>${esc(prem.params[k])}</p>`
         : k === r.nickname.param
-          ? `<p class="hint">（前半は第1章の見本で読めます）</p>${mosaic(r.index, 10 + k, PARAM_TEXT[k][lv].rest)}`
+          ? `<p class="hint">（書き出しは第1章の見本で読めます）</p>${mosaic(r.index, 10 + k, PARAM_TEXT[k][lv].rest)}`
           : mosaic(r.index, 10 + k, PARAM_TEXT[k][lv].len)}
     </div>`;
   }).join('');

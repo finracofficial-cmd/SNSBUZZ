@@ -39,12 +39,13 @@ for (let i = 0; i < count; i++) {
 // くわしい診断：パラメータの段階ごとの文言（lead は無料、detail は有料）
 const PARAM_KEYS = ['koi', 'yaki', 'samishi', 'mousou', 'oshi', 'tsukkomi'];
 const params = JSON.parse(fs.readFileSync(path.resolve('content/params.json'), 'utf8'));
-// 第1章の見本：二つ名のもとになったパラメータの解説の「前半」（1文目から、全体の半分まで）だけを無料で見せる。後半は完全版
+// 第1章の見本：二つ名のもとになったパラメータの解説の「書き出し」（1文目から、全体の3割まで）だけを無料で見せる。続きは完全版。
+// URL を書きかえるとほかの項目の見本も見えるので、全18通りあわせても有料文の2割ほどにとどめる
 const sampleOf = (d) => {
   const parts = String(d || '').match(/[^。]+。?/g) || [];
   let out = parts[0] || '';
   let i = 1;
-  while (i < parts.length - 2 && len(out) + len(parts[i]) <= len(d) * 0.5) out += parts[i++];
+  while (i < parts.length - 2 && len(out) + len(parts[i]) <= len(d) * 0.3) out += parts[i++];
   return out;
 };
 const paramText = PARAM_KEYS.map((k) =>

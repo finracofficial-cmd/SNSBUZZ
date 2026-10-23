@@ -172,5 +172,5 @@ if (!SITE.origin.includes('example.com') && placeholder) {
   console.error('site/assets/config.js の seller（特定商取引法の表記）が仮のままです。埋めてからビルドしてください。');
   process.exit(1);
 }
-if (placeholder) console.warn('注意: config.js の seller（特定商取引法の表記）が仮のままです。販売を始める前に埋めてください。');
+if (placeholder) console.warn('注意: config.js の seller（特定商取引法の表記）が仮のままです。埋めるまで、本番の環境変数 SELLER_READY=1 は入れないでください（入れるまで販売は始まりません）。');
 console.log(`built ${TYPES.length} type pages + types/invite/quiz/pair/group/thanks pages into dist/ (${appName} ${Math.round(Buffer.byteLength(appCode) / 1024)}KB, CSS ${Math.round(Buffer.byteLength(cssCode) / 1024)}KB inlined)`);

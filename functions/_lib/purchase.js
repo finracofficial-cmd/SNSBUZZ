@@ -52,11 +52,13 @@ export async function recordPurchase(env, session) {
     // A/Bテストの案ごとの支払い完了
     abTagsOf(session.metadata?.ab).forEach((tag) => stmts.push(bump.bind(`ab:${tag}:paid`)));
   }
+  // 購入の記録より先に返金・申し立てが届いていたら、ここで止める
+  stmts.push(env.DB.prepare('UPDATE purchases SET refunded = 1 WHERE id = ?1 AND payment_intent IN (SELECT payment_intent FROM refunds)').bind(id));
   const rid = session.client_reference_id;
   if (rid && /^[a-z2-7]{16}$/.test(rid)) {
     stmts.push(env.DB.prepare('INSERT OR IGNORE INTO claims (rid, token, created_at) VALUES (?1, ?2, ?3)').bind(rid, token, Date.now()));
   }
-  if (stmts.length) await env.DB.batch(stmts);
+  await env.DB.batch(stmts);
   const row = await env.DB.prepare('SELECT refunded FROM purchases WHERE id = ?1').bind(id).first();
   return { id, plan, token, isNew, refunded: !!row?.refunded };
 }

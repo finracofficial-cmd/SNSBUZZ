@@ -2,7 +2,7 @@
 // LINE のアプリ内ブラウザと Safari では保存場所が別なので、LINE の Keep メモにリンクを送っておけば、どちらでも続きから遊べる。
 // 名前や完全版の購入情報は入れない（完全版は引き継ぎリンクで移す）。
 import { TYPES, HIDDEN } from './data.js';
-import { decodeResult } from './logic.js';
+import { decodeResult, encodeResult } from './logic.js';
 
 const b64url = (text) => btoa(String.fromCharCode(...new TextEncoder().encode(text))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const unb64url = (s) => new TextDecoder().decode(Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0)));
@@ -23,14 +23,15 @@ export function importPayload(payload) {
     return null;
   }
   if (!data || typeof data !== 'object') return null;
-  const quick = decodeResult(data.q);
-  const detail = decodeResult(data.d);
+  // 文字列以外（配列など）は捨てる。保存するのは、読み直したうえで作り直したコード
+  const quick = typeof data.q === 'string' ? decodeResult(data.q) : null;
+  const detail = typeof data.d === 'string' ? decodeResult(data.d) : null;
   const met = [];
   for (let i = 0; i < TYPES.length; i++) if (Number(data.m) & (1 << i)) met.push(i);
   const hidden = Array.isArray(data.h) ? data.h.filter((i) => HIDDEN.some((x) => x.index === i)) : [];
   return {
-    quick: quick && quick.mode === 'quick' ? { code: data.q, index: quick.index } : null,
-    detail: detail && detail.mode === 'detail' ? { code: data.d, index: detail.index } : null,
+    quick: quick && quick.mode === 'quick' ? { code: encodeResult(quick), index: quick.index } : null,
+    detail: detail && detail.mode === 'detail' ? { code: encodeResult(detail), index: detail.index } : null,
     met,
     hidden,
   };

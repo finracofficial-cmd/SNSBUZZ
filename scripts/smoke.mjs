@@ -287,6 +287,7 @@ await a.goto(`${base}/#/zukan`);
 await a.waitForSelector('.carry a');
 const carryHref = await a.getAttribute('.carry a', 'href');
 const carryUrl = new URL(decodeURIComponent(new URL(carryHref).searchParams.get('text')).split('\n').pop());
+check(carryUrl.searchParams.get('openExternalBrowser') === '1', '続きリンクが LINE の外のブラウザで開く形になっていない');
 const fresh = await phone();
 await fresh.goto(`${base}/${carryUrl.hash}`);
 await fresh.waitForSelector('.stickerbook');

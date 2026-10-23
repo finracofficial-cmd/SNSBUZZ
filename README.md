@@ -72,7 +72,7 @@ npm run smoke      # スマホ幅で かんたん診断→くわしい診断→�
    npx wrangler d1 execute ponkotsu-zukan --remote --file=schema.sql
    ```
 
-   v3.1 でテーブルの形が変わりました（`purchases`・`rl` の追加、`groups` に管理キーの列）。公開前なので、手元の D1 は作り直してください（`rm -rf .wrangler/state` のあと上のコマンド）。
+   v4.2 でテーブルの形が変わりました（`refunds` の追加、`members` に `handle` の列・`member_id` は本人の秘密のハッシュに、`groups` に `locked` の列、`rl` に索引）。公開前なので、手元の D1 は作り直してください（`rm -rf .wrangler/state` のあと上のコマンド）。
 
 3. 環境変数（シークレット）を設定する。
 
@@ -93,10 +93,13 @@ npm run smoke      # スマホ幅で かんたん診断→くわしい診断→�
    | `STRIPE_WEBHOOK_SECRET` | Stripe の Webhook の署名シークレット。ブラウザが戻らなかった購入の受け取りと、返金の反映に使う | 販売するなら必須 |
    | `STRIPE_PAYMENT_METHODS` | 支払い方法（既定 `card`。Apple Pay・Google Pay をふくむ）。PayPay を足すなら `card,paypay` | 任意 |
    | `PROMO_CODES` | 完全版を開けるコード（カンマ区切り。`CODE:2027-03-31` で期限つき。キャンペーン・タイアップ用） | 任意 |
+   | `SELLER_READY` | `1` にすると販売を始める。`config.js` の `seller`（特定商取引法の表記）を本物に書きかえてから入れる | 販売するなら必須 |
 
-   `PREMIUM_SECRET`・`STRIPE_SECRET_KEY`・`STRIPE_PRICE_ID` の3つがそろうと、販売が始まります。そろっていない間は「準備中」と表示されます。
+   `PREMIUM_SECRET`・`STRIPE_SECRET_KEY`・`STRIPE_PRICE_ID`・`SELLER_READY=1` がそろうと、販売が始まります。そろっていない間は「準備中」と表示されます（特商法の表記が仮のまま売り始めないため）。
 
-   Stripe のダッシュボードで Webhook を作ります。送り先は `https://<ドメイン>/api/stripe-webhook`、イベントは `checkout.session.completed`・`checkout.session.async_payment_succeeded`・`charge.refunded` です。署名シークレットを `STRIPE_WEBHOOK_SECRET` に入れます。
+   Stripe のダッシュボードで Webhook を作ります。送り先は `https://<ドメイン>/api/stripe-webhook`、イベントは `checkout.session.completed`・`checkout.session.async_payment_succeeded`・`charge.refunded`・`charge.dispute.created`・`charge.dispute.closed` です。署名シークレットを `STRIPE_WEBHOOK_SECRET` に入れます。全額返金とチャージバックでは、その購入（ふたり用ならプレゼントを受け取った人も）が読めなくなります。一部返金では止めません。
+
+   公開後に一度、`curl -I 'https://<ドメイン>/thanks/?sid=x'` で `cache-control: no-store` と `referrer-policy: no-referrer` が付いているか確かめてください（`_headers` の `/thanks/*` が `/thanks/` そのものにも効いているか）。
 
    購入者から「読めなくなった」と連絡があったときは、Stripe で支払いを確かめてから、引き継ぎリンクを作り直して送ります。
 
@@ -122,16 +125,19 @@ npm run smoke      # スマホ幅で かんたん診断→くわしい診断→�
 |---|---|
 | `POST /api/event` | 診断の開始・完了・シェアなどを数える（回数だけ） |
 | `GET /api/stats` | タイプ別の完了数（レア度用）。`?all=1` と `KPI_TOKEN` で全カウンタ |
-| `POST /api/groups` ・ `GET/POST /api/groups/<id>` | グループ診断の作成・表示・参加 |
+| `POST /api/groups` ・ `GET/POST /api/groups/<id>` | グループ診断の作成・表示・参加（本人はグループごとの秘密で参加し、ほかの人に見えるのはランダムな番号だけ） |
+| `PATCH /api/groups/<id>` | 作った人が参加を締め切る／再開する |
 | `DELETE /api/groups/<id>` | グループから抜ける／作った人がメンバーを外す・グループを消す |
+| `GET/POST /api/poll` | 今週のお題の集計（30票に満たないものは出さない）／投票（今週のお題だけ） |
 | `GET /api/premium/status` | 販売中かどうかと、プラン・価格・支払い方法 |
 | `GET /api/premium` | 完全版の本文。購入トークン（ヘッダか Cookie）が必要。返金済み・終了したコードは 403 |
-| `POST /api/checkout` | Stripe の価格が画面の価格と同じか確かめてから、Checkout の支払いページを作る |
+| `POST /api/checkout` | Stripe の価格が画面の価格と同じか確かめてから、Checkout の支払いページを作る（セッションIDも返し、ブラウザは決済へ移る前に覚えておく） |
 | `GET /api/unlock` | 決済から戻ったブラウザに購入トークンを渡す（決済から24時間まで） |
 | `POST /api/stripe-webhook` | Stripe の通知。購入と、おうちの人の支払いの受け取りを記録し、返金で無効にする |
 | `GET /api/claim` | おうちの人の支払いが終わったら、子どもの端末（秘密の文字列を持つ端末だけ）にトークンを渡す |
-| `GET /api/gift` ・ `POST /api/gift` | ふたり用のプレゼント券を出す／1回だけ受け取る |
-| `GET /api/restore` | ブラウザのデータが消えたとき、Cookie から購入トークンを戻す |
+| `GET /api/gift` ・ `POST /api/gift` | ふたり用のプレゼント券を出す／1回だけ受け取る（買った本人と、自分で買った完全版を持っている人は受け取れない） |
+| `GET /api/restore` | ブラウザのデータが消えたとき、Cookie から購入トークンとプランを戻す |
+| `POST /api/adopt` | 引き継ぎリンク・コードで開いた端末にも、購入トークンの Cookie を付ける（自分で買った有効な購入の Cookie は上書きしない） |
 | `POST /api/redeem` | キャンペーンのコードでトークンを出す |
 
 静的配信と Functions・D1 は Cloudflare の無料枠でほぼ収まります。AI生成は使っていないので、利用者が増えても1診断あたりの原価はかかりません。

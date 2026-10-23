@@ -9,17 +9,23 @@ CREATE TABLE IF NOT EXISTS rl (
   n INTEGER NOT NULL DEFAULT 0,
   exp INTEGER NOT NULL
 );
+CREATE INDEX IF NOT EXISTS rl_exp ON rl (exp);
 
+-- locked = 1 のあいだは、新しいメンバーは参加できない（作った人が締め切る）
 CREATE TABLE IF NOT EXISTS groups (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   admin TEXT NOT NULL DEFAULT '',
+  locked INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL
 );
 
+-- member_id は、本人の端末だけが持つ秘密（グループごと）のハッシュ。誰にも返さない。
+-- handle は、ほかの人に見せるランダムな番号（作った人がメンバーを外すときに使う）
 CREATE TABLE IF NOT EXISTS members (
   group_id TEXT NOT NULL,
   member_id TEXT NOT NULL,
+  handle TEXT NOT NULL,
   nick TEXT NOT NULL,
   code TEXT NOT NULL,
   created_at INTEGER NOT NULL,
@@ -38,6 +44,13 @@ CREATE TABLE IF NOT EXISTS purchases (
   refunded INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS purchases_payment_intent ON purchases (payment_intent);
+
+-- 全額返金とチャージバック（reason = refund / dispute）。購入の記録より先に届いても取りこぼさないよう、別に残す
+CREATE TABLE IF NOT EXISTS refunds (
+  payment_intent TEXT PRIMARY KEY,
+  reason TEXT NOT NULL,
+  at INTEGER NOT NULL
+);
 
 -- おうちの人に払ってもらったとき、子どもの端末が受け取るまで購入トークンを預かる（7日で無効）。
 -- rid は子どもの端末だけが持つ秘密のハッシュ。リンクを知っているだけでは受け取れない。

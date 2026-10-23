@@ -57,6 +57,14 @@ export async function accessOf(env, token) {
   return 'ok';
 }
 
+// 購入（ふたり用のプラン名を知るため）。cs_ と gr-cs_ のどちらからでも引ける
+export async function planOf(env, id) {
+  if (!env.DB || !id || !/^(gr-)?cs_/.test(id)) return 'solo';
+  const row = await env.DB.prepare('SELECT plan FROM purchases WHERE id = ?1').bind(id.replace(/^gr-/, '')).first();
+  // プレゼントで受け取った人は、さらにプレゼントはできない
+  return row?.plan === 'duo' && id.startsWith('cs_') ? 'duo' : 'solo';
+}
+
 // 購入トークンを、ブラウザのデータが消えても戻せるよう HttpOnly の Cookie にも入れる
 // （スクリプトが書いた localStorage は、iOS Safari では7日間使わないと消える）
 export const tokenCookie = (token) =>
@@ -66,7 +74,16 @@ export const cookieToken = (request) => /(?:^|;\s*)pz_t=([\w.-]+)/.exec(request.
 export const requestToken = (request) =>
   (request.headers.get('authorization') || '').replace(/^Bearer /, '') || cookieToken(request);
 
-export const premiumEnabled = (env) => !!(env.STRIPE_SECRET_KEY && env.STRIPE_PRICE_ID && env.PREMIUM_SECRET);
+// Cookie を書くときのヘッダ。いまの Cookie に、自分で買った有効な購入（cs_）が入っていたら、
+// プレゼント・コード・別の購入のトークンで上書きしない（返金やコードの終了で、自分の購入まで読めなくならないように）
+export async function cookieHeaderFor(env, request, token) {
+  const current = cookieToken(request);
+  if (current && current !== token && (await verifyToken(env, current))?.startsWith('cs_') && (await accessOf(env, current)) === 'ok') return {};
+  return { 'set-cookie': tokenCookie(token) };
+}
+
+// SELLER_READY=1 は、特定商取引法の表記（config.js の seller）を本物に書きかえたあとで入れる。入れるまでは販売しない
+export const premiumEnabled = (env) => !!(env.STRIPE_SECRET_KEY && env.STRIPE_PRICE_ID && env.PREMIUM_SECRET && env.SELLER_READY === '1');
 
 // 販売するプラン。「ふたり用」は STRIPE_PRICE_ID_DUO があるときだけ出す
 // price は画面に出す価格。決済のときに Stripe の価格と同じか確かめる（checkout.js）

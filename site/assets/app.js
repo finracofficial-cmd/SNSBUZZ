@@ -5,7 +5,7 @@ import { TYPES, HIDDEN, BASE_COUNT, QUESTIONS, PARAM_QUESTIONS, indexFromNo, typ
 import { decodeResult } from './logic.js';
 import { charaSVG } from './chara.js';
 import { app, esc, store, track, render, foot, brand, toast, handleShareClick, closeModal, navBegin, navNow, safeDecode, loadStats } from './ui.js';
-import { startQuiz, handleQuizClick, cancelQuiz, savedQuickAnswers, optionOrder } from './quiz.js';
+import { startQuiz, handleQuizClick, cancelQuiz, savedQuickAnswers, optionOrder, quizActive } from './quiz.js';
 import { viewResult, viewType, viewZukan, showLockedType, receiveCarryover } from './result.js';
 import { viewReport } from './report.js';
 import { viewAdmin } from './admin.js';
@@ -30,7 +30,9 @@ import {
   retryPendingPurchase,
   viewBuyFor,
   acceptToken,
-  acceptGift,
+  viewGift,
+  adoptToken,
+  hasPremium,
   maybeShowAfterPurchase,
   watchClaim,
   premiumStatus,
@@ -39,7 +41,8 @@ import {
 } from './premium.js';
 
 // ---------- ホーム ----------
-// 実数は、十分にたまってから・上2けたで切り捨てて出す（盛った数字や、自動で増える演出はしない）
+// 実数は、十分にたまってから・上2けたで切り捨てて出す（盛った数字や、自動で増える演出はしない）。
+// 数えているのは診断の完了の回数（同じ人が2回やれば2回）なので、「人」ではなく「回」と書く
 const floor2 = (n) => {
   const digits = String(Math.floor(n)).length;
   const unit = 10 ** Math.max(digits - 2, 0);
@@ -49,7 +52,7 @@ export function proofText(stats) {
   if (!stats || stats.error) return '';
   const parts = [];
   if (stats.total >= 1000 && stats.today >= 100) {
-    parts.push(`きょう${floor2(stats.today)}人・これまで${floor2(stats.total)}人が診断${stats.since ? `（${stats.since.replace(/-/g, '/')}から集計）` : ''}`);
+    parts.push(`きょう${floor2(stats.today)}回・これまで${floor2(stats.total)}回の診断${stats.since ? `（${stats.since.replace(/-/g, '/')}から集計）` : ''}`);
   }
   const answered = (stats.agree?.yes || 0) + (stats.agree?.no || 0);
   if (answered >= 300) parts.push(`結果に「わかる〜！」と答えた人 ${Math.floor((stats.agree.yes / answered) * 100)}%`);
@@ -148,9 +151,9 @@ function viewAbout() {
     ${brand()}
     <div class="card"><h2>このサイトについて</h2>
       <p>${esc(SITE.quizName)}は、かんたん診断（${QUESTIONS.length}問）で“愛すべきポンコツ”タイプを16種類（＋隠しタイプ${HIDDEN.length}種類）に分け、くわしい診断（＋${PARAM_QUESTIONS.length}問）で二つ名・恋愛タイプ・ステータスを出すエンタメ診断です。心理学にもとづく検査や、占いではありません。</p>
-      <p>回答や個人を特定する情報は集めていません。集計しているのは、診断結果のタイプとボタンが押された回数だけです（レア度の表示に使います）。</p>
+      <p>回答や個人を特定する情報は集めていません。集計しているのは、診断結果のタイプ・ボタンが押された回数・今週のお題の票数だけです（レア度や割合の表示に使います）。</p>
       <p>完全版を表示するときは、くわしい診断のパラメータの点数（6つの数字）をサーバーに送ります。保存はしません。お支払いの情報は決済サービスの Stripe が扱い、このサイトはカード番号を受け取りません。</p>
-      <p>相性のおさそいリンクやわたしクイズのリンクには、あなたが入れたニックネームと診断結果（クイズは答えの番号）だけが入ります。グループ診断では、ニックネームとかんたん診断のタイプをグループのページに表示します。グループは作成から90日で消えます。グループを作った人はメンバーを外したりグループを消したりでき、メンバーは自分で抜けられます。</p>
+      <p>結果のシェアURL・相性のおさそいリンク・わたしクイズのリンクには、あなたが入れたニックネームと、かんたん診断の結果（タイプと4つの軸。クイズは答えの番号）だけが入ります。くわしい診断のパラメータ（恋愛積極度など）は入りません。グループ診断では、ニックネームとかんたん診断のタイプをグループのページに表示します。グループは作成から90日で消えます。グループを作った人はメンバーを外したりグループを消したりでき、メンバーは自分で抜けられます。</p>
       <p>結果画像のスクリーンショット、動画での紹介、配信での利用は自由です。</p>
     </div>
     ${foot()}`);
@@ -182,10 +185,15 @@ async function viewLegal() {
     ${foot()}`);
 }
 
+// おうちの人の支払いが終わったページ。受け取れたとき（1時間以内）だけ「完了」と出す
 function viewBuyDone() {
-  render(`${brand()}<section class="card"><h1 class="sheet-title">お支払いが完了しました</h1>
-    <p>お子さまのスマホで、完全版が読めるようになりました。表示が変わらないときは、お子さまにページを開き直してもらってください。</p></section>${foot()}`);
-  maybeShowAfterPurchase();
+  const paid = Date.now() - store.get('childPaidAt', 0) < 3600 * 1000;
+  render(paid
+    ? `${brand()}<section class="card"><h1 class="sheet-title">お支払いが完了しました</h1>
+      <p>お子さまのスマホで、完全版が読めるようになりました。表示が変わらないときは、お子さまにページを開き直してもらってください。</p></section>${foot()}`
+    : `${brand()}<section class="card"><h1 class="sheet-title">お支払いは完了していません</h1>
+      <p>お支払いの記録が見つかりませんでした。お子さまから届いたリンクを開いて、もう一度お手続きください。</p></section>${foot()}`);
+  if (paid) maybeShowAfterPurchase();
 }
 
 // 決済から戻ってきたページ（/thanks/）。受け取れなかったら、ここで再試行できるようにする
@@ -197,7 +205,7 @@ const THANKS_ERRORS = {
 };
 async function viewThanks(sid) {
   render(`${brand()}<section class="card center"><h1 class="sheet-title">お支払いを確かめています…</h1></section>`);
-  const res = await completePurchase(sid);
+  const res = await completePurchase(sid, { fromThanks: true });
   if (res.ok) {
     location.replace(res.url);
     return;
@@ -246,7 +254,12 @@ async function routeInner() {
     }
   } else if (view === 'zukan') viewZukan();
   else if (view === 'pair') viewPair(a, b, safeDecode(c), safeDecode(d));
-  else if (view === 'g') await viewGroup(a);
+  else if (view === 'g' && b === 'a') {
+    // 作った人の管理用リンク：管理キーを覚えて、ふつうのグループのページへ
+    if (/^[a-z0-9]{8}$/.test(a || '') && /^[a-z0-9]{16}$/.test(c || '')) store.set(`groupAdmin:${a}`, c);
+    history.replaceState(null, '', `${location.pathname}#/g/${a}`);
+    await viewGroup(a);
+  } else if (view === 'g') await viewGroup(a);
   else if (view === 'fq') viewFriendQuiz();
   else if (view === 'qs') {
     if (receiveQuizScore(a, b)) toast('クイズの結果が届きました');
@@ -254,15 +267,11 @@ async function routeInner() {
     viewQuizBoard();
   } else if (view === 'qboard') viewQuizBoard();
   else if (view === 'buy' && a === 'done') viewBuyDone();
-  else if (view === 'buy' && /^[a-z2-7]{16}$/.test(a || '')) await viewBuyFor(a, render);
-  else if (view === 'unlock' || view === 'gift') {
-    const t = safeDecode(a);
-    let msg;
-    if (view === 'gift') {
-      const r = await acceptGift(t);
-      msg = { ok: 'プレゼントを受け取りました。完全版が開きます', used: 'このプレゼントは、もう受け取られています' }[r] || 'リンクを確認できませんでした';
-    } else msg = (await acceptToken(t)) ? '完全版が開きました' : 'リンクを確認できませんでした';
-    toast(msg);
+  else if (view === 'buy' && /^[a-z2-7]{16}$/.test(a || '')) await viewBuyFor(a, render, b || '', c || '');
+  else if (view === 'gift') viewGift(safeDecode(a), { render, brand, foot });
+  else if (view === 'unlock') {
+    const r = await acceptToken(safeDecode(a));
+    toast({ ok: '完全版が開きました', same: 'この端末では、もう完全版が読めます', has: 'この端末では、もう完全版が読めます（いまの購入のまま使います）' }[r] || 'リンクを確認できませんでした');
     const mine = store.get('mine', null);
     history.replaceState(null, '', `${location.pathname}${mine?.code ? `#/r/${mine.code}/${mine.shareId}` : '#/'}`);
     route();
@@ -334,14 +343,20 @@ document.getElementById('modal').addEventListener('click', delegate);
     if (!store.get('mine', null)?.code) store.set('pendingGroup', { id });
     history.replaceState(null, '', `${location.pathname}#/g/${id}`);
   }
-  // 決済のあと受け取れていない購入があれば、もう一度確かめる
-  if (page !== 'thanks') {
+  // 決済のあと受け取れていない購入があれば、もう一度確かめる（起動したときと、決済のアプリから戻ってきたとき）。
+  // 診断の途中なら、知らせるだけにして画面は描き直さない
+  const retry = () =>
     retryPendingPurchase().then((ok) => {
       if (!ok) return;
       toast('完全版を受け取りました');
-      route();
+      if (!quizActive()) route();
     });
+  if (page !== 'thanks') {
+    retry();
+    document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && retry());
   }
+  // 引き継ぎリンクなどで開いた端末にも Cookie を付けておく（1日1回）
+  if (hasPremium()) adoptToken();
 })();
 
 window.addEventListener('hashchange', route);
