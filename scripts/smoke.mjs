@@ -23,6 +23,13 @@ const server = http.createServer((req, res) => {
     res.end(JSON.stringify(req.method === 'POST' ? { ok: true } : { week: url.searchParams.get('week'), total: 120, all: [50, 40, 20, 10], types: { 3: [12, 20, 5, 3], 6: [30, 4, 2, 1] } }));
     return;
   }
+  // グループのページ（4人）
+  if (url.pathname === '/api/groups/abcd2345') {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    const codes = ['3~-5_-1_3_5', 'f~9_9_9_9', '0~-7_-9_-9_-9', 'a~9_-9_9_-9'];
+    res.end(JSON.stringify({ name: 'いつメン', admin: false, locked: false, expiresAt: Date.now() + 864e5, members: codes.map((code, k) => ({ handle: `hd00000${k}`, nick: ['ゆう', 'あお', 'りん', 'はる'][k], code, mine: false })) }));
+    return;
+  }
   if (url.pathname.startsWith('/api/')) {
     res.writeHead(404).end();
     return;
@@ -329,6 +336,16 @@ await fresh.context().close();
   await line.waitForSelector('.result .label');
   check(!!(await line.$('.hint.inapp')), 'LINE のブラウザで、ブラウザで開く案内が出ない');
   await ctx.close();
+}
+
+// ---------- グループ：4人なら役割も4つ ----------
+{
+  const p = await phone();
+  await p.goto(`${base}/#/g/abcd2345`);
+  await p.waitForSelector('ul.roles li', { timeout: 5000 });
+  check((await p.locator('ul.roles li').count()) === 4, `グループの役割が4つ出ない: ${await p.locator('ul.roles li').count()}`);
+  await shot(p, '18-group');
+  await p.context().close();
 }
 
 // ---------- 先週のお題の結果（日付を11月にずらして、10/19の週を見る） ----------

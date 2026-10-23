@@ -1,7 +1,7 @@
 // ふたり・グループで遊ぶ機能：相性のおさそいリンク、ペア結果、グループ診断、出会ったタイプの記録
 import { SITE } from './config.js';
 import { TYPES, AXES, QUESTIONS, typeNo } from './data.js';
-import { compatOf, decodeResult, encodeResult, quickCodeOf, resultFromSums, axisPctOf } from './logic.js';
+import { compatOf, decodeResult, encodeResult, quickCodeOf, resultFromSums, axisPctOf, groupRoles } from './logic.js';
 import { charaSVG } from './chara.js';
 import { drawPairCard, canvasToBlob } from './card.js';
 import { optionsHtml } from './quiz.js';
@@ -188,16 +188,6 @@ function pairAxes(a, b, nameA, nameB) {
 }
 
 // ---------- グループ診断 ----------
-// event は、文化祭・修学旅行の季節（9〜11月）に添える「行事なら」の言いかえ（判定は同じ）
-const ROLES = [
-  { name: '幹事役', icon: '👑', event: '実行委員', score: (s) => s[0] + s[1] - s[2] },
-  { name: 'ムードメーカー', icon: '🎉', event: '応援・盛り上げ係', score: (s) => s[1] + s[2] },
-  { name: '切り込み隊長', icon: '⚡', event: '呼びこみ係', score: (s) => s[0] + s[2] },
-  { name: '参謀', icon: '🧠', event: '企画・会計係', score: (s) => -s[2] - s[3] },
-  { name: '癒やし担当', icon: '🍵', event: '休憩所の主', score: (s) => -s[0] + s[3] },
-  { name: '聞き役', icon: '👂', event: 'グチ聞き係', score: (s) => -s[1] - s[3] },
-  { name: '自由人', icon: '🎈', event: '当日ふらっと現れる係', score: (s) => s[2] + s[3] - s[1] },
-];
 const eventSeason = () => [9, 10, 11].includes(jstParts().m);
 
 // グループの結果をテキストで（LINEのトークにそのまま貼れる形）
@@ -211,22 +201,6 @@ export function groupText({ name, members, roles, bestPair, groupType, url }) {
     `#${SITE.hashtag} まだの人はここから参加してね`,
     url,
   ].join('\n');
-}
-
-export function groupRoles(members) {
-  const taken = new Set();
-  const out = [];
-  for (const role of ROLES) {
-    if (taken.size >= members.length) break;
-    const best = members
-      .filter((m) => !taken.has(m.id))
-      .map((m) => ({ m, v: role.score(m.result.sums) }))
-      .sort((x, y) => y.v - x.v)[0];
-    if (!best) break;
-    taken.add(best.m.id);
-    out.push({ role: role.name, icon: role.icon, event: role.event, member: best.m });
-  }
-  return out;
 }
 
 const GROUP_ERRORS = {
@@ -299,7 +273,7 @@ export async function viewGroup(id) {
   const members = g.members.map((m) => ({ ...m, result: decodeResult(m.code) })).filter((m) => m.result);
   const mine = store.get('mine', null);
   const joined = members.some((m) => m.mine);
-  const roles = groupRoles(members);
+  const roles = groupRoles(members.map((m) => m.result.sums)).map((r) => ({ ...r, member: members[r.member] }));
   const counts = new Map();
   members.forEach((m) => counts.set(m.result.index, (counts.get(m.result.index) || 0) + 1));
   const top = [...counts.entries()].sort((x, y) => y[1] - x[1])[0];

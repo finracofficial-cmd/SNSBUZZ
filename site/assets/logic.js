@@ -285,3 +285,32 @@ export function decodeResult(code) {
 
 // かんたん診断のコードに戻す（くわしい診断の結果から、タイプ部分だけを取り出す）
 export const quickCodeOf = (code) => String(code).split('~').slice(0, 2).join('~');
+
+// ---------- グループ診断の役割 ----------
+// event は、文化祭・修学旅行の季節（9〜11月）に添える「行事なら」の言いかえ（判定は同じ）
+const ROLES = [
+  { name: '幹事役', icon: '👑', event: '実行委員', score: (s) => s[0] + s[1] - s[2] },
+  { name: 'ムードメーカー', icon: '🎉', event: '応援・盛り上げ係', score: (s) => s[1] + s[2] },
+  { name: '切り込み隊長', icon: '⚡', event: '呼びこみ係', score: (s) => s[0] + s[2] },
+  { name: '参謀', icon: '🧠', event: '企画・会計係', score: (s) => -s[2] - s[3] },
+  { name: '癒やし担当', icon: '🍵', event: '休憩所の主', score: (s) => -s[0] + s[3] },
+  { name: '聞き役', icon: '👂', event: 'グチ聞き係', score: (s) => -s[1] - s[3] },
+  { name: '自由人', icon: '🎈', event: '当日ふらっと現れる係', score: (s) => s[2] + s[3] - s[1] },
+];
+
+// 役割を、向いている人から順に1人1つずつ割りふる（メンバーが7人より少なければ、その人数ぶんだけ）。
+// sumsList はメンバーごとの4軸の合計。返り値の member はメンバーの番号（並び順）
+export function groupRoles(sumsList) {
+  const taken = new Set();
+  const out = [];
+  for (const role of ROLES) {
+    if (taken.size >= sumsList.length) break;
+    let best = -1;
+    sumsList.forEach((sums, k) => {
+      if (!taken.has(k) && (best < 0 || role.score(sums) > role.score(sumsList[best]))) best = k;
+    });
+    taken.add(best);
+    out.push({ role: role.name, icon: role.icon, event: role.event, member: best });
+  }
+  return out;
+}

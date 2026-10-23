@@ -340,3 +340,15 @@ test('今週のお題：週の区切りはブラウザとサーバーで同じ�
     assert.ok(!/誰|だれ|一番.*人|いちばん.*人|体重|成績|点数|彼氏|彼女|好きな人|告白/.test(p.q + p.choices.join()), p.q);
   }
 });
+
+test('グループの役割：n人なら min(n, 7) 個の役を、同じ人に2つ付けずに割りふる', async () => {
+  const { groupRoles } = await import('../site/assets/logic.js');
+  const people = [[5, 3, -1, 1], [-7, -5, 3, 1], [1, 7, 5, -3], [-3, -1, -5, -7], [9, -3, 1, 5], [-1, 1, -1, 1], [3, 3, 3, 3], [-9, -9, -9, -9], [1, -1, 1, -1]];
+  for (let n = 1; n <= people.length; n++) {
+    const roles = groupRoles(people.slice(0, n));
+    assert.equal(roles.length, Math.min(n, 7), `${n}人`);
+    assert.equal(new Set(roles.map((r) => r.member)).size, roles.length, '同じ人に2つ付かない');
+    assert.ok(roles.every((r) => r.member >= 0 && r.member < n && r.role && r.icon && r.event));
+  }
+  assert.deepEqual(groupRoles([]), []);
+});
