@@ -1,10 +1,11 @@
 // 質問の画面。かんたん診断（12問）と、くわしい診断（かんたんの続き＋24問・3章）。
 // かんたん診断の答えは保存しておき、くわしい診断はその続きから始められる。
 // 進捗は36問の通し番号で出す（くわしい診断を続きから始めると、最初から33%進んだ状態になる）。
-import { TYPES, QUESTIONS, PARAM_QUESTIONS, CHAPTERS, PARAMS, PARAM_MAX, LOVE_TYPES, loveIndexOf, isHidden } from './data.js';
+import { TYPES, QUESTIONS, PARAM_QUESTIONS, CHAPTERS, PARAMS, PARAM_MAX, LOVE_TYPES, HIDDEN, BASE_COUNT, loveIndexOf, isHidden } from './data.js';
 import { judge, encodeResult, rankOf, paramLevel, LEVEL_NAMES } from './logic.js';
 import { charaSVG } from './chara.js';
 import { app, esc, store, track, loadStats, render, toast, navNow } from './ui.js';
+import { variant } from './ab.js';
 
 // 選択肢の並びが「弱い→強い」の順に見えないよう、質問ごとに固定の順でシャッフルする
 function shuffled(n, seedBase) {
@@ -20,6 +21,11 @@ function shuffled(n, seedBase) {
 export const optionOrder = (kind, i) => shuffled(4, kind === 'axis' ? i : 100 + i);
 
 const TOTAL = QUESTIONS.length + PARAM_QUESTIONS.length;
+// 結果の直前に見せる「いま何を計算しているか」。本当にしている計算だけを書く（「AIが分析」などは書かない）
+const CALC_STEPS = {
+  quick: [`${QUESTIONS.length}問の答えから4つの軸を計算中`, `${BASE_COUNT}タイプから照合中`, `隠しタイプ${HIDDEN.length}種類の条件をチェック中`],
+  detail: [`${TOTAL}問の答えから10項目のステータスを計算中`, '二つ名240通りから照合中', `隠しタイプ${HIDDEN.length}種類の条件をチェック中`],
+};
 const QUICK_CHEERS = { 6: 'あと半分！', 11: 'ラスト1問！' };
 
 let session = null;
@@ -196,9 +202,15 @@ function finish() {
   if (isHidden(r.index)) store.set('gotHidden', [...new Set([...store.get('gotHidden', []), r.index])]);
   loadStats();
   const gen = navNow();
+  const wait = s.mode === 'quick' ? 1500 : 2100;
+  // A/Bテスト calc：初めての1回だけ、計算の中身を3行で見せる（動きを減らす設定の人には出さない）
+  const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  const steps = !reduce && !store.get('calcSeen', false) && variant('calc') === 'on' ? CALC_STEPS[s.mode] : null;
+  if (steps) store.set('calcSeen', true);
   render(`<div class="loading">${s.mode === 'quick' ? 'ポンコツ成分を分析中…' : 'あなたのレポートを作成中…'}
     <div class="analyzing">${r.axisPct.map((p, k) => `<div><i style="--w:${p}%;animation-delay:${k * 0.18}s"></i></div>`).join('')}
-    ${r.params ? r.params.map((p, k) => `<div><i style="--w:${Math.max(p, 6)}%;animation-delay:${0.72 + k * 0.12}s"></i></div>`).join('') : ''}</div></div>`);
+    ${r.params ? r.params.map((p, k) => `<div><i style="--w:${Math.max(p, 6)}%;animation-delay:${0.72 + k * 0.12}s"></i></div>`).join('') : ''}</div>
+    ${steps ? `<ul class="calc">${steps.map((t, k) => `<li style="--d:${((wait - 300) / steps.length / 1000) * (k + 1)}s">${esc(t)}</li>`).join('')}</ul>` : ''}</div>`);
   const pendingGroup = store.get('pendingGroup', null);
   setTimeout(() => {
     if (gen !== navNow()) return;
@@ -209,7 +221,7 @@ function finish() {
     } else {
       location.replace(`#/r/${code}/${shareId}`);
     }
-  }, s.mode === 'quick' ? 1500 : 2100);
+  }, wait);
 }
 
 export const quizActive = () => !!session;

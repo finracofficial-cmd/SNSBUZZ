@@ -15,6 +15,7 @@ import { openProfileCard } from './profile.js';
 import { shareCarousel, shareUrl } from './result.js';
 import { textResult } from './textshare.js';
 import { canRecordVideo, recordReveal } from './video.js';
+import { nowCard, bindNowCard } from './now.js';
 import { variant, abTrack } from './ab.js';
 
 const typePath = (index) => `#/t/${typeNo(index).toLowerCase()}`;
@@ -216,6 +217,7 @@ export async function viewReport(r, shareId) {
     ${chapter(3, `恋愛タイプ「${love.name}」`, loveChapter(r, prem), { locked: !prem })}
     ${premiumChapters(r, prem)}
     ${prem ? '' : `<p class="hint center">※モザイクはイメージです。購入すると、モザイクの部分の文章が読めるようになります（「約○字」はおおよその文字数です）。</p>`}
+    ${nowCard(r.index)}
     <section class="card"><h2>もっと遊ぶ</h2>
       <div class="btn-col">
         <a class="btn sub" href="${typePath(r.index)}">${esc(t.label)}の解説（性格・恋愛・友達・学校・トリセツ）</a>
@@ -266,6 +268,7 @@ export async function viewReport(r, shareId) {
   app.querySelector('[data-quiz-create]').addEventListener('click', () => openQuizCreate(r));
   app.querySelector('[data-group]').addEventListener('click', openGroupCreate);
   app.querySelector('[data-prof]').addEventListener('click', () => openProfileCard(r));
+  bindNowCard(r.index, url);
   app.querySelectorAll('[data-card]').forEach((b) =>
     b.addEventListener('click', () => {
       const card = b.dataset.card;

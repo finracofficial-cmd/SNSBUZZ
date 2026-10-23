@@ -17,6 +17,12 @@ fs.mkdirSync(outDir, { recursive: true });
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png' };
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://x');
+  // 今週のお題だけ、決まった集計を返す（ほかのAPIは無い扱い）
+  if (url.pathname === '/api/poll') {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify(req.method === 'POST' ? { ok: true } : { week: url.searchParams.get('week'), total: 120, all: [50, 40, 20, 10], types: { 3: [12, 20, 5, 3], 6: [30, 4, 2, 1] } }));
+    return;
+  }
   if (url.pathname.startsWith('/api/')) {
     res.writeHead(404).end();
     return;
@@ -89,6 +95,7 @@ await a.goto(`${base}/`);
 await a.evaluate(() => {
   localStorage.setItem('pz:ab:autopay', JSON.stringify('on'));
   localStorage.setItem('pz:ab:paybar', JSON.stringify('amount'));
+  localStorage.setItem('pz:ab:calc', JSON.stringify('on'));
 });
 await a.waitForTimeout(500);
 await shot(a, '01-home', false);
@@ -98,6 +105,8 @@ await a.waitForSelector('.qhead');
 check((await a.textContent('.qhead span')).includes('2 / 12'), `トップで1問目に答えても2問目から始まらない: ${await a.textContent('.qhead span')}`);
 await shot(a, '02-question', false);
 await answer(a, 11, (i) => ((i + 1) * 3) % 4);
+// 結果の直前の「計算中」（A/Bテスト calc の on。初めての1回だけ）
+check((await a.waitForSelector('.calc li', { timeout: 2000 }).catch(() => null)) && (await a.locator('.calc li').count()) === 3, '「計算中」の3行が出ない');
 await a.waitForSelector('.result .label', { timeout: 6000 });
 await a.waitForTimeout(500);
 const quickLabel = await a.textContent('.result .label');
@@ -135,6 +144,18 @@ await a.fill('#pf-like', 'いちごミルク');
 await a.fill('#pf-word', 'なかよくしてね');
 await a.click('#pf-go');
 await saveModalImage(a, '04-profile-card');
+// いまの二つ名（時間帯で前半が変わる）
+check((await a.textContent('.now-name .now-word')).endsWith(quickLabel), 'いまの二つ名にタイプ名がない');
+await a.click('[data-now-card]');
+await saveModalImage(a, '04-now-card');
+// 今週のお題：1タップで投票すると、全体の割合が出る
+await a.click('[data-vote="1"]');
+await a.waitForSelector('.poll-bars li.mine', { timeout: 5000 });
+check((await a.locator('.poll-bars li').count()) === 4, '今週のお題の結果が4行ない');
+await a.reload();
+await a.waitForSelector('.poll-bars li.mine', { timeout: 5000 });
+check(!(await a.$('[data-vote]')), '投票したのに、もう一度投票できる');
+await shot(a, '04-poll');
 
 // くわしい診断（続きから24問・3章）
 await a.click('.teaser-card [data-go="#/d"]');
@@ -286,6 +307,20 @@ await fresh.context().close();
   await line.waitForSelector('.result .label');
   check(!!(await line.$('.hint.inapp')), 'LINE のブラウザで、ブラウザで開く案内が出ない');
   await ctx.close();
+}
+
+// ---------- 先週のお題の結果（日付を11月にずらして、10/19の週を見る） ----------
+{
+  const p = await phone();
+  await p.clock.setFixedTime(new Date('2026-11-04T20:30:00+09:00'));
+  await p.goto(`${base}/#/w/2026-10-19`);
+  await p.waitForSelector('.poll-bars', { timeout: 5000 });
+  check((await p.locator('.poll-types li').count()) === 2, '先週のお題のタイプ別が出ない');
+  await shot(p, '17-poll-week');
+  // まだ来ていない週・今週は、トップへ
+  await p.goto(`${base}/#/w/2026-11-02`);
+  await p.waitForSelector('.hero', { timeout: 5000 });
+  await p.context().close();
 }
 
 // ---------- 画面幅ごとの横はみ出し ----------

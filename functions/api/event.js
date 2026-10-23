@@ -4,7 +4,7 @@ import { EXPERIMENTS, AB_STEPS } from '../_lib/experiments.js';
 
 const SHARE = [
   'x', 'line', 'link', 'native', 'invite', 'quiz',
-  'image', 'label-image', 'gold-image', 'pair-image', 'nick-image', 'status-image', 'prof-image', 'carousel', 'wallpaper', 'text', 'video',
+  'image', 'label-image', 'gold-image', 'pair-image', 'nick-image', 'status-image', 'prof-image', 'carousel', 'wallpaper', 'text', 'video', 'now-nick',
 ];
 const ALLOWED = {
   start: () => '',
@@ -17,6 +17,8 @@ const ALLOWED = {
   group: (v) => (['create', 'join'].includes(v) ? v : null),
   // 結果への「わかる〜！」「ちょっとちがう」
   agree: (v) => (['yes', 'no'].includes(v) ? v : null),
+  // 結果を持っている端末が、別の日にまた開いた（1日1回）
+  visit: (v) => (v === 'return' ? v : null),
   // トップの1問目のカードから始めた
   lp: (v) => (v === 'q1' ? v : null),
   // 支払い完了とコード利用はサーバー側（unlock / redeem）で数える

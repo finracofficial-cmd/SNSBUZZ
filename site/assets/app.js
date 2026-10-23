@@ -9,6 +9,8 @@ import { startQuiz, handleQuizClick, cancelQuiz, savedQuickAnswers, optionOrder 
 import { viewResult, viewType, viewZukan, showLockedType, receiveCarryover } from './result.js';
 import { viewReport } from './report.js';
 import { viewAdmin } from './admin.js';
+import { nowName } from './now.js';
+import { pollCard, bindPoll, viewPollWeek } from './polls.js';
 import {
   receiveInvite,
   receiveShare,
@@ -89,11 +91,12 @@ async function viewHome() {
       <div class="meta-row"><span class="pill">16タイプ＋隠し${HIDDEN.length}タイプ</span><span class="pill">二つ名240通り</span><span class="pill">診断は無料・登録なし</span></div>
     </section>
     ${mine && TYPES[mine.index] && mine.code ? `<a class="card mini-result" href="#/r/${esc(mine.code)}/${esc(mine.shareId)}">
-      ${charaSVG(mine.index, { size: 64 })}<div><small>前回のあなた</small><b>${esc(TYPES[mine.index].label)}</b></div><span>結果を見る →</span></a>` : `
+      ${charaSVG(mine.index, { size: 64 })}<div><small>前回のあなた</small><b>${esc(TYPES[mine.index].label)}</b><small class="now-line">いまは「${esc(nowName(mine.index).text)}」</small></div><span>結果を見る →</span></a>` : `
     <section class="card q1card"><p class="lead">さっそく1問目（全${QUESTIONS.length}問）</p>
       <h2 class="qtext">${esc(q1.text)}</h2>
       <div class="opts">${optionOrder('axis', 0).map((j) => `<button class="opt" data-q1="${j}">${esc(q1.options[j].text)}</button>`).join('')}</div>
     </section>`}
+    ${mine ? pollCard() : ''}
     <section class="card samples"><h2>こんな結果が出ます</h2>
       <div class="sample-list">${SAMPLES.map((i) => `<a class="sample-card" href="/t/${typeNo(i).toLowerCase()}/" style="--c:${TYPES[i].color}">${charaSVG(i, { size: 72 })}<b>${esc(TYPES[i].label)}</b><span>${esc(TYPES[i].roast.replace(/^でも、?/, ''))}</span></a>`).join('')}</div>
       <a class="linkish" href="/types/">全${BASE_COUNT}タイプを見る</a>
@@ -107,6 +110,7 @@ async function viewHome() {
         <li><b>グループ診断</b>　仲良しグループや部活の役割分担（幹事役・癒やし担当…）がわかる</li>
       </ul>
     </section>
+    ${mine ? '' : pollCard()}
     <section class="card secret-teaser"><h2>隠しタイプは${HIDDEN.length}種類</h2>
       <div class="silhouettes">${HIDDEN.map((h) => charaSVG(h.index, { size: 72 })).join('')}</div>
       <p class="hint">特定の答え方をした人だけが出会えるレアタイプ。いちばんレアなタイプは、計算上の出現率が1%以下。</p>
@@ -117,6 +121,7 @@ async function viewHome() {
     <button class="btn sub" data-group-create>グループ診断をつくる</button>
     ${foot()}`);
   app.querySelector('[data-group-create]').addEventListener('click', openGroupCreate);
+  bindPoll(gen, navNow);
   app.querySelectorAll('[data-q1]').forEach((b) =>
     b.addEventListener('click', () => {
       b.classList.add('on');
@@ -265,6 +270,8 @@ async function routeInner() {
     toast(receiveCarryover(a) ? '続きから遊べるようにしました' : 'リンクを確認できませんでした');
     history.replaceState(null, '', `${location.pathname}#/zukan`);
     viewZukan();
+  } else if (view === 'w') {
+    if (!(await viewPollWeek(a || '', { render, brand, foot, navNow }))) await viewHome();
   } else if (view === 'admin') await viewAdmin();
   else if (view === 'about') viewAbout();
   else if (view === 'legal') await viewLegal();
@@ -304,6 +311,11 @@ document.getElementById('modal').addEventListener('click', delegate);
   const params = new URLSearchParams(location.search);
   const page = document.body.dataset.page;
   if (params.has('s')) track('ref', '1');
+  // 再訪：結果を持っている端末が、別の日にまた開いたら1日1回だけ数える（いまの二つ名・今週のお題の効き目を見る）
+  const today = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
+  const lastVisit = store.get('lastVisit', null);
+  if (store.get('mine', null) && lastVisit && lastVisit !== today) track('visit', 'return');
+  store.set('lastVisit', today);
   // シェアURL（/t/NN/?s=..&f=..）から来た：シェアした人との相性を、診断後に出せるようにする
   if (document.body.dataset.type && !location.hash && params.has('f')) receiveShare(params);
   if (page === 'invite' && !location.hash && receiveInvite(params)) {

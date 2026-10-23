@@ -276,3 +276,49 @@ test('続きリンク：結果・図鑑・隠しタイプを往復でき、お�
   assert.equal(importPayload('!!!'), null);
   assert.equal(importPayload(btoa('{"q":"<script>","m":"x"}')).quick, null);
 });
+
+test('いまの二つ名：深夜はカウントダウンなし。「次に変わる」と出した時刻には、本当に言葉が変わる', async () => {
+  const { nowWord } = await import('../site/assets/clock.js');
+  const start = Date.parse('2026-01-01T00:00:00+09:00');
+  const words = new Set();
+  for (let t = start; t < start + 400 * 86400e3; t += 30 * 60e3) {
+    const n = nowWord(t);
+    words.add(n.word);
+    assert.ok(n.word.length >= 4 && n.word.length <= 12, n.word);
+    if (n.night) {
+      assert.equal(n.next, null);
+      continue;
+    }
+    assert.match(n.next, /^\d\d:00$/);
+    const [h] = n.next.split(':').map(Number);
+    const jst = new Date(t + 9 * 3600e3);
+    const at = Date.UTC(jst.getUTCFullYear(), jst.getUTCMonth(), jst.getUTCDate(), h) - 9 * 3600e3 + (h <= jst.getUTCHours() ? 86400e3 : 0);
+    assert.notEqual(nowWord(at).word, n.word, `${new Date(t).toISOString()} → ${n.next}`);
+    assert.equal(nowWord(at - 60e3).word, n.word, '変わる直前までは同じ言葉');
+  }
+  assert.ok(words.size >= 14, `言葉の種類 ${words.size}`);
+  // 占いの言葉は使わない
+  assert.ok(![...words].some((w) => /運勢|ラッキー|当たる|鑑定|占/.test(w)));
+});
+
+test('今週のお題：週の区切りはブラウザとサーバーで同じ（月曜0時・日本時間）。問題は4択で、他人を選ばせない', async () => {
+  const site = await import('../site/assets/clock.js');
+  const server = await import('../functions/_lib/week.js');
+  for (let t = Date.parse('2026-10-01T00:00:00Z'); t < Date.parse('2027-03-01T00:00:00Z'); t += 3 * 3600e3 + 17 * 60e3) {
+    assert.equal(site.weekIdOf(t), server.weekIdOf(t));
+  }
+  assert.equal(site.weekIdOf(Date.parse('2026-10-25T23:59:00+09:00')), '2026-10-19');
+  assert.equal(site.weekIdOf(Date.parse('2026-10-26T00:00:00+09:00')), '2026-10-26');
+  assert.equal(site.shiftWeek('2026-10-26', -1), '2026-10-19');
+  const { POLLS, POLL_START, pollOf } = await import('../site/assets/polldata.js');
+  assert.ok(POLLS.length >= 26, '半年分');
+  assert.equal(pollOf(POLL_START), POLLS[0]);
+  assert.equal(pollOf(site.shiftWeek(POLL_START, -1)), null);
+  assert.equal(pollOf(site.shiftWeek(POLL_START, POLLS.length + 2)), POLLS[2]);
+  assert.equal(new Set(POLLS.map((p) => p.q)).size, POLLS.length, 'お題が重複していない');
+  for (const p of POLLS) {
+    assert.equal(p.choices.length, 4, p.q);
+    assert.equal(new Set(p.choices).size, 4, p.q);
+    assert.ok(!/誰|だれ|一番.*人|いちばん.*人|体重|成績|点数|彼氏|彼女|好きな人|告白/.test(p.q + p.choices.join()), p.q);
+  }
+});

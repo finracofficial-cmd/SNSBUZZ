@@ -310,6 +310,10 @@ test('計測：許可したキーだけ数え、日別にも記録する。回�
     ['ab', 'paybar:amount:paid', 400],
     ['ab', 'paybar:nope:exposure', 400],
     ['ab', 'hasOwnProperty:x:exposure', 400],
+    ['ab', 'calc:on:exposure', 204],
+    ['share', 'now-nick', 204],
+    ['visit', 'return', 204],
+    ['visit', 'first', 400],
   ]) {
     assert.equal((await send(k, v)).status, status, `${k}:${v}`);
   }
@@ -388,4 +392,34 @@ test('グループ：作成・参加・NGワード・かんたん診断の結果
   // 90日を過ぎたら見えない
   DB.raw.prepare('UPDATE groups SET created_at = ?1 WHERE id = ?2').run(Date.now() - 91 * 24 * 3600 * 1000, g2.id);
   assert.equal((await groupGet({ params: { id: g2.id }, request: req(`/api/groups/${g2.id}`), env })).status, 404);
+});
+
+test('今週のお題：今週にだけ投票でき、30票に満たない集計は出さない', async () => {
+  const { onRequestPost: pollPost, onRequestGet: pollGet } = await import('../functions/api/poll.js');
+  const { weekIdOf } = await import('../functions/_lib/week.js');
+  const env = { DB: fakeD1() };
+  const week = weekIdOf();
+  const vote = (body, ip = '203.0.113.1') => pollPost({ request: post('/api/poll', body, { 'cf-connecting-ip': ip }), env });
+  assert.equal((await vote({ week, choice: 1, type: 3 })).status, 200);
+  assert.equal((await vote({ week: '2020-01-06', choice: 1, type: 3 })).status, 409, '前の週には投票できない');
+  assert.equal((await vote({ week, choice: 4, type: 3 })).status, 400);
+  assert.equal((await vote({ week, choice: 1, type: 20 })).status, 400);
+  assert.equal((await vote({ week, choice: '1' })).status, 400);
+  assert.equal((await vote({ week, choice: 2, type: null })).status, 200, 'タイプなしでも投票できる');
+  let data = await (await pollGet({ request: req(`/api/poll?week=${week}`), env })).json();
+  assert.equal(data.total, 2);
+  assert.equal(data.all, null, '少ないうちは割合を出さない');
+  assert.deepEqual(data.types, {});
+  // 1つのIPからは1分に10票まで
+  let limited = false;
+  for (let i = 0; i < 12 && !limited; i++) limited = (await vote({ week, choice: 0 }, '198.51.100.7')).status === 429;
+  assert.ok(limited, '回数制限がかかる');
+  for (let i = 0; i < 30; i++) await vote({ week, choice: i % 3 === 0 ? 0 : 1, type: 3 }, `192.0.2.${i}`);
+  data = await (await pollGet({ request: req(`/api/poll?week=${week}`), env })).json();
+  assert.ok(data.total >= 30 && Array.isArray(data.all) && data.all.length === 4);
+  assert.deepEqual(data.types['3'], [10, 21, 0, 0]);
+  assert.equal((await pollGet({ request: req('/api/poll?week=2999-01-04'), env })).status, 400, '先の週は読めない');
+  assert.equal((await pollGet({ request: req('/api/poll?week=x'), env })).status, 400);
+  // 他のサイトからの投票は弾く
+  assert.equal((await pollPost({ request: post('/api/poll', { week, choice: 0 }, { origin: 'https://evil.example' }), env })).status, 403);
 });

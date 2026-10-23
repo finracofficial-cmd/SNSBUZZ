@@ -10,6 +10,8 @@ import { drawStoryCard, drawLabelCard, canvasToBlob } from './card.js';
 import { drawCarousel } from './carousel.js';
 import { textResult } from './textshare.js';
 import { canRecordVideo, recordReveal } from './video.js';
+import { nowCard, bindNowCard } from './now.js';
+import { pollCard, bindPoll } from './polls.js';
 import { exportPayload, importPayload } from './carryover.js';
 import { app, ORIGIN, esc, store, track, loadStats, render, toast, foot, brand, shareLinks, shareImageBlob, shareImageSet, openModal, inAppHint, navNow, busy, copySilently, copyText, shareVideo } from './ui.js';
 import { invitePairBox, inviteBanner, openInviteModal, openGroupCreate, openQuizCreate, friends } from './social.js';
@@ -195,6 +197,8 @@ export async function viewResult(r, shareId) {
         ${boardCount ? `<a class="btn sub" href="#/qboard">わたしクイズの成績表（${boardCount}人）</a>` : ''}
       </div>
     </section>
+    ${nowCard(r.index)}
+    ${pollCard()}
     <button class="btn" data-go="#/q">もう一回診断する</button>
     <button class="btn sub" data-go="#/zukan">図鑑をみる（全${TYPES.length}タイプ）</button>
     ${foot()}`, r.index);
@@ -240,6 +244,8 @@ export async function viewResult(r, shareId) {
   app.querySelector('[data-quiz-create]').addEventListener('click', () => openQuizCreate(r));
   app.querySelector('[data-group]').addEventListener('click', openGroupCreate);
   app.querySelector('[data-prof]').addEventListener('click', () => openProfileCard(r));
+  bindNowCard(r.index, url);
+  bindPoll(gen, navNow);
 }
 
 // ---------- タイプ詳細（シェアURLの着地点・図鑑から） ----------

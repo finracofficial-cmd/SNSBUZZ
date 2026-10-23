@@ -53,7 +53,8 @@ function shares(c) {
   return `<table class="kpi"><tr><th>シェア</th><th>回数</th><th>完了あたり</th></tr>${rows
     .map((k) => `<tr><td>${esc(k.slice(6))}</td><td>${c[k]}</td><td>${pct(c[k], done)}</td></tr>`)
     .join('')}<tr><td><b>合計</b></td><td><b>${c.share || 0}</b></td><td><b>${pct(c.share || 0, done)}</b></td></tr></table>
-    <p class="hint">流入（シェアURL・おさそい）：${c.ref || 0}／わたしクイズの出題：${c['quiz:create'] || 0}・回答完了：${c['quiz:done'] || 0}／グループ：作成 ${c['group:create'] || 0}・参加 ${c['group:join'] || 0}</p>`;
+    <p class="hint">流入（シェアURL・おさそい）：${c.ref || 0}／わたしクイズの出題：${c['quiz:create'] || 0}・回答完了：${c['quiz:done'] || 0}／グループ：作成 ${c['group:create'] || 0}・参加 ${c['group:join'] || 0}</p>
+    <p class="hint">再訪（結果を持っている端末が別の日にまた開いた・1日1回）：${c['visit:return'] || 0}／今週のお題の投票：${c.poll || 0}／いまの二つ名の画像：${c['share:now-nick'] || 0}</p>`;
 }
 
 function daily(c) {

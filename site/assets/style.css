@@ -74,13 +74,13 @@ a { color: inherit; }
 .qhead button { background: none; border: none; color: var(--sub); padding: 4px 0; cursor: pointer; font-weight: 800; }
 .qtext { font-size: 24px; line-height: 1.45; font-weight: 800; margin: 8px 0 22px; min-height: 2.9em; }
 .opts { display: grid; gap: 12px; }
-.opt {
+.opt, .poll-opt {
   text-align: left; border: 2px solid var(--line); background: var(--paper); border-radius: 18px;
   padding: 16px 18px; font-size: 17px; cursor: pointer; box-shadow: 0 4px 0 var(--line);
   transition: transform .08s, background .15s, border-color .15s;
 }
-.opt:active, .opt.on { transform: translateY(3px); box-shadow: 0 1px 0 var(--line); }
-.opt.on { background: #FFE6DD; border-color: var(--accent); }
+.opt:active, .opt.on, .poll-opt:active, .poll-opt.on { transform: translateY(3px); box-shadow: 0 1px 0 var(--line); }
+.opt.on, .poll-opt.on { background: #FFE6DD; border-color: var(--accent); }
 
 /* ---------- 鑑定中 ---------- */
 .loading { text-align: center; padding-top: 30vh; font-weight: 800; font-size: 20px; }
@@ -513,3 +513,31 @@ table.kpi td small { color: var(--sub); font-size: 10px; margin-left: 2px; }
 .faq summary { font-weight: 800; cursor: pointer; }
 .faq p { margin: 6px 0 0; font-size: 14px; }
 .share-video { width: 100%; max-height: 60vh; border-radius: 12px; background: #000; display: block; margin: 0 auto 12px; }
+/* いまの二つ名 */
+.now-name .lead small { color: var(--sub); font-weight: 500; }
+.now-word { font-size: 20px; font-weight: 800; line-height: 1.5; margin: 4px 0 2px; word-break: keep-all; overflow-wrap: anywhere; }
+.now-word b { color: var(--type-text); }
+.mini-result .now-line { font-size: 12px; }
+/* 今週のお題 */
+.poll .lead small { color: var(--sub); font-weight: 500; margin-left: 4px; }
+.poll-q { font-size: 19px; line-height: 1.5; margin: 6px 0 12px; }
+.poll-opts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.poll-opts .poll-opt { margin: 0; min-height: 52px; font-size: 15px; padding: 10px 12px; }
+.poll-bars { list-style: none; padding: 0; margin: 8px 0; display: flex; flex-direction: column; gap: 8px; }
+.poll-bars li { position: relative; display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 12px; background: var(--bg); overflow: hidden; }
+.poll-bars li i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--type); opacity: .55; z-index: 0; }
+.poll-bars li span, .poll-bars li b { position: relative; z-index: 1; }
+.poll-bars li.mine { outline: 2px solid var(--type-deep); }
+.poll-bars li small { color: var(--sub); font-weight: 500; }
+.poll-type { font-weight: 700; }
+.poll-types { list-style: none; padding: 0; margin: 0; }
+.poll-types li { display: flex; justify-content: space-between; gap: 8px; padding: 8px 0; border-bottom: 1px dashed var(--line); }
+.poll-types li span { color: var(--sub); text-align: right; }
+/* 結果の直前の「計算中」（A/Bテスト calc） */
+.calc { list-style: none; padding: 0; margin: 18px auto 0; max-width: 320px; text-align: left; font-size: 14px; font-weight: 500; }
+.calc li { position: relative; padding: 4px 0 4px 28px; color: var(--sub); }
+.calc li::before { content: ''; position: absolute; left: 4px; top: 50%; width: 14px; height: 14px; margin-top: -7px; border-radius: 50%; border: 2px solid var(--line); }
+.calc li::after { content: ''; position: absolute; left: 9px; top: 50%; width: 5px; height: 9px; margin-top: -7px; border: solid var(--type-btn); border-width: 0 3px 3px 0; transform: rotate(45deg); opacity: 0; animation: calc-check .2s ease-out var(--d) forwards; }
+.calc li { animation: calc-done .2s ease-out var(--d) forwards; }
+@keyframes calc-check { to { opacity: 1; } }
+@keyframes calc-done { to { color: var(--ink); } }
