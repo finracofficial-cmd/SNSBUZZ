@@ -48,6 +48,7 @@ async function phone(width = 390) {
   });
   return page;
 }
+let videoInfo = null;
 const shot = (page, name, fullPage = true) => page.screenshot({ path: path.join(outDir, `${name}.png`), fullPage });
 
 async function answer(page, count, pick) {
@@ -112,6 +113,20 @@ await a.waitForSelector('.modal .image-set img', { timeout: 15000 });
 check((await a.locator('.modal .image-set img').count()) === 6, 'まとめて保存の画像が6枚ない');
 await shot(a, '04-carousel', false);
 await a.click('.modal [data-close]');
+// 結果発表の動画（録画できる環境だけ）。6秒録画して、再生できる動画ができるか
+if (await a.$('[data-video]')) {
+  await a.click('[data-video]');
+  await a.waitForSelector('.modal video.share-video', { timeout: 20000 });
+  const video = await a.evaluate(async () => {
+    const v = document.querySelector('.modal video.share-video');
+    const blob = await (await fetch(v.src)).blob();
+    await new Promise((r) => (v.readyState >= 1 ? r() : v.addEventListener('loadedmetadata', r, { once: true })));
+    return { size: blob.size, type: blob.type, w: v.videoWidth, h: v.videoHeight };
+  });
+  check(video.size > 50000 && video.w === 720 && video.h === 1280, `結果発表の動画がおかしい: ${JSON.stringify(video)}`);
+  videoInfo = video;
+  await a.click('.modal [data-close]');
+}
 await a.click('[data-card="label"]');
 await saveModalImage(a, '04-label-card');
 await a.click('[data-prof]');
@@ -297,5 +312,5 @@ for (const width of [320, 375, 390, 430]) {
 
 await browser.close();
 server.close();
-console.log(JSON.stringify({ quickLabel, nickname, autoPaywall, hiddenLabel, errors, failures }, null, 2));
+console.log(JSON.stringify({ quickLabel, nickname, autoPaywall, hiddenLabel, videoInfo, errors, failures }, null, 2));
 if (errors.length || failures.length) process.exit(1);

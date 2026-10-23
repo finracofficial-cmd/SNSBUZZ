@@ -4,7 +4,7 @@ import { EXPERIMENTS, AB_STEPS } from '../_lib/experiments.js';
 
 const SHARE = [
   'x', 'line', 'link', 'native', 'invite', 'quiz',
-  'image', 'label-image', 'gold-image', 'pair-image', 'nick-image', 'status-image', 'prof-image', 'carousel', 'wallpaper', 'text',
+  'image', 'label-image', 'gold-image', 'pair-image', 'nick-image', 'status-image', 'prof-image', 'carousel', 'wallpaper', 'text', 'video',
 ];
 const ALLOWED = {
   start: () => '',

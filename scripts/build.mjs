@@ -109,6 +109,7 @@ const CSP = [
   'font-src https://fonts.gstatic.com',
   "img-src 'self' data: blob:",
   "connect-src 'self' data: blob:",
+  "media-src 'self' blob:",
   "frame-ancestors 'none'",
   "base-uri 'self'",
   "form-action 'self'",

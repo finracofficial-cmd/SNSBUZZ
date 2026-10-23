@@ -9,8 +9,9 @@ import { radarSVG } from './radar.js';
 import { drawStoryCard, drawLabelCard, canvasToBlob } from './card.js';
 import { drawCarousel } from './carousel.js';
 import { textResult } from './textshare.js';
+import { canRecordVideo, recordReveal } from './video.js';
 import { exportPayload, importPayload } from './carryover.js';
-import { app, ORIGIN, esc, store, track, loadStats, render, toast, foot, brand, shareLinks, shareImageBlob, shareImageSet, openModal, inAppHint, navNow, busy, copySilently, copyText } from './ui.js';
+import { app, ORIGIN, esc, store, track, loadStats, render, toast, foot, brand, shareLinks, shareImageBlob, shareImageSet, openModal, inAppHint, navNow, busy, copySilently, copyText, shareVideo } from './ui.js';
 import { invitePairBox, inviteBanner, openInviteModal, openGroupCreate, openQuizCreate, friends } from './social.js';
 import { openProfileCard } from './profile.js';
 
@@ -164,6 +165,7 @@ export async function viewResult(r, shareId) {
     <section class="share">
       <button class="btn type" data-card="story">画像を保存してストーリーに投稿</button>
       <button class="btn sub" data-carousel>6枚まとめて保存（TikTok・インスタの投稿用）</button>
+      ${canRecordVideo() ? '<button class="btn sub" data-video>結果発表の動画を保存（6秒・TikTok・リール用）</button>' : ''}
       ${shareLinks({ text, url, channelPrefix: '' }).html}
       <button class="btn sub small wide" data-text>テキストでコピー（LINE・X用）</button>
       ${inAppHint()}
@@ -215,6 +217,16 @@ export async function viewResult(r, shareId) {
         track('share', b.dataset.card === 'label' ? 'label-image' : 'image');
         await shareImageBlob(await canvasToBlob(canvas), { name: `ponkotsu-${typeNo(r.index)}-${b.dataset.card}.png`, text: `${text}\n${url}`, alt: `${t.label}のシェア画像`, linkCopied: await linkCopied });
       });
+    }),
+  );
+  const videoButton = app.querySelector('[data-video]');
+  videoButton?.addEventListener('click', () =>
+    busy(videoButton, async () => {
+      toast('動画をつくっています（6秒）…');
+      const card = await drawStoryCard(ctx);
+      const blob = await recordReveal(card);
+      track('share', 'video');
+      await shareVideo(blob, { name: `ponkotsu-${typeNo(r.index)}`, text: `${text}\n${url}` });
     }),
   );
   const carouselButton = app.querySelector('[data-carousel]');

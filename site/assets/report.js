@@ -8,12 +8,13 @@ import { titleOf, rarityOf, paramLevel, rankOf, LEVEL_NAMES, fullName, skillsOf 
 import { charaSVG, shade } from './chara.js';
 import { radarSVG, statValues, statLabels } from './radar.js';
 import { drawStoryCard, drawStatusCard, drawWallpaper, canvasToBlob } from './card.js';
-import { app, ORIGIN, esc, track, loadStats, render, toast, foot, brand, shareLinks, shareImageBlob, inAppHint, ICONS, navNow, busy, copySilently, copyText } from './ui.js';
+import { app, ORIGIN, esc, track, loadStats, render, toast, foot, brand, shareLinks, shareImageBlob, inAppHint, ICONS, navNow, busy, copySilently, copyText, shareVideo } from './ui.js';
 import { openPaywall, fetchPremium, hasPremium, previewUnlocked, watchClaim, premiumStatus, maybeShowAfterPurchase, restorePurchase, hasGift, openGift, priceOf } from './premium.js';
 import { openInviteModal, openGroupCreate, invitePairBox, openQuizCreate } from './social.js';
 import { openProfileCard } from './profile.js';
 import { shareCarousel, shareUrl } from './result.js';
 import { textResult } from './textshare.js';
+import { canRecordVideo, recordReveal } from './video.js';
 import { variant, abTrack } from './ab.js';
 
 const typePath = (index) => `#/t/${typeNo(index).toLowerCase()}`;
@@ -195,6 +196,7 @@ export async function viewReport(r, shareId) {
     <section class="share">
       <button class="btn type" data-card="nick">二つ名カードを保存</button>
       <button class="btn sub" data-carousel>6枚まとめて保存（TikTok・インスタの投稿用）</button>
+      ${canRecordVideo() ? '<button class="btn sub" data-video>結果発表の動画を保存（6秒・TikTok・リール用）</button>' : ''}
       ${shareLinks({ text, url, channelPrefix: '' }).html}
       <button class="btn sub small wide" data-text>テキストでコピー（LINE・X用）</button>
       ${inAppHint()}
@@ -244,6 +246,16 @@ export async function viewReport(r, shareId) {
       });
     }
   });
+  const videoButton = app.querySelector('[data-video]');
+  videoButton?.addEventListener('click', () =>
+    busy(videoButton, async () => {
+      toast('動画をつくっています（6秒）…');
+      const card = await drawStoryCard({ ...r, title, rarity, nickname: r.nickname.text, loveName: love.name, gold: !!prem });
+      const blob = await recordReveal(card);
+      track('share', 'video');
+      await shareVideo(blob, { name: `ponkotsu-${typeNo(r.index)}`, text: `${text}\n${url}` });
+    }),
+  );
   const carouselButton = app.querySelector('[data-carousel]');
   carouselButton.addEventListener('click', () => shareCarousel(carouselButton, r, `${text}\n${url}`));
   app.querySelector('[data-text]').addEventListener('click', () => {

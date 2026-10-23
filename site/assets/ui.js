@@ -244,6 +244,32 @@ export async function shareImageSet(blobs, { name, text, alt }) {
   );
 }
 
+// 動画を共有シートへ。だめなら再生とダウンロードの画面を出す
+export async function shareVideo(blob, { name, text }) {
+  if (!blob || !blob.size) {
+    toast('動画を作れませんでした。画像の保存をためしてね');
+    return;
+  }
+  const ext = blob.type.includes('mp4') ? 'mp4' : 'webm';
+  const file = new File([blob], `${name}.${ext}`, { type: blob.type });
+  if (navigator.canShare?.({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], text });
+      return;
+    } catch (e) {
+      if (e.name === 'AbortError') return;
+    }
+  }
+  const url = URL.createObjectURL(blob);
+  openModal(
+    `<video src="${url}" controls playsinline muted loop autoplay class="share-video"></video>
+     <a class="btn" href="${url}" download="${esc(file.name)}">動画を保存する</a>
+     <p class="hint">保存した動画を、TikTok やリールで投稿してね</p>${inAppHint()}
+     <button class="btn sub" data-close>とじる</button>`,
+    () => URL.revokeObjectURL(url),
+  );
+}
+
 // 画像を共有シートへ。だめなら長押し保存用に表示する
 // クリップボードに黙ってコピーする（トーストを出さない）。押した直後に呼ぶ（時間がたつと許可されない）
 export async function copySilently(text) {
