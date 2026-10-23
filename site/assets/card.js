@@ -63,8 +63,20 @@ function greedy(ctx, pieces, maxWidth) {
   return lines;
 }
 
+// 単語の区切りの補正：カタカナが続くところ（「リ|マインド」）と、数字と単位（「3|日」）は1つにまとめる
+const KATA = /[\u30a0-\u30ff]/;
+function mergePieces(pieces) {
+  const out = [];
+  for (const p of pieces) {
+    const prev = out[out.length - 1];
+    if (prev && ((KATA.test(prev[prev.length - 1]) && KATA.test(p[0])) || (/\d$/.test(prev) && /^[^\s、。！？]{1,2}$/.test(p)))) out[out.length - 1] = prev + p;
+    else out.push(p);
+  }
+  return out;
+}
+
 export function wrap(ctx, text, maxWidth, balance = true) {
-  const pieces = segmenter ? Array.from(segmenter.segment(text), (s) => s.segment) : Array.from(text);
+  const pieces = segmenter ? mergePieces(Array.from(segmenter.segment(text), (s) => s.segment)) : Array.from(text);
   const lines = greedy(ctx, pieces, maxWidth);
   if (!balance || lines.length < 2) return lines;
   // 同じ行数に収まる範囲で幅を詰めて、最後の行だけ極端に短くならないようにする

@@ -118,9 +118,20 @@ await a.click('[data-card="story"]');
 await saveModalImage(a, '04-story-card');
 // 6枚まとめて保存（共有シートが使えない環境では、6枚が並んだ画面になる）
 await a.click('[data-carousel]');
+await a.click('.modal [data-ratio="story"]');
 await a.waitForSelector('.modal .image-set img', { timeout: 15000 });
 check((await a.locator('.modal .image-set img').count()) === 6, 'まとめて保存の画像が6枚ない');
 await shot(a, '04-carousel', false);
+await a.click('.modal [data-close]');
+// Instagram のフィード用（3:4）
+await a.click('[data-carousel]');
+await a.click('.modal [data-ratio="feed"]');
+await a.waitForSelector('.modal .image-set img', { timeout: 15000 });
+const feedSize = await a.evaluate(() => {
+  const img = document.querySelector('.modal .image-set img');
+  return img.complete ? `${img.naturalWidth}x${img.naturalHeight}` : new Promise((r) => (img.onload = () => r(`${img.naturalWidth}x${img.naturalHeight}`)));
+});
+check(feedSize === '1080x1440', `フィード用の画像の大きさがちがう: ${feedSize}`);
 await a.click('.modal [data-close]');
 // 結果発表の動画（録画できる環境だけ）。6秒録画して、再生できる動画ができるか
 if (await a.$('[data-video]')) {

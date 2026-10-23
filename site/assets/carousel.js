@@ -134,11 +134,18 @@ async function cover(r, t, img, nickname) {
 }
 
 // 2. あるある
-function aru(r, t) {
+// 2枚目は、それだけで「何の診断の、どのタイプか」がわかるようにする
+// （Instagram は、スワイプされなかったカルーセルを2枚目から見せ直すことがある）
+function aru(r, t, img) {
   const [canvas, ctx] = newCanvas(W, H);
   base(ctx, t, 2);
-  heading(ctx, t, `${t.label}あるある`, 310);
-  const y = bullets(ctx, t, t.aru.slice(0, 4), 430);
+  ctx.drawImage(img, W / 2 - 90, 190, 180, 180);
+  ctx.textAlign = 'center';
+  ctx.fillStyle = shade(t.color, 0.45);
+  ctx.font = `800 36px ${FONT}`;
+  ctx.fillText(`${SITE.quizName}の結果`, W / 2, 420);
+  heading(ctx, t, `${t.label}あるある`, 510);
+  const y = bullets(ctx, t, t.aru.slice(0, 4), 600);
   ctx.textAlign = 'center';
   ctx.fillStyle = INK;
   ctx.font = `800 56px ${FONT}`;
@@ -335,5 +342,25 @@ export async function drawCarousel(r) {
     `${SITE.name}${SITE.hashtag}${t.label}${t.catch}${t.aru.join('')}${t.chara}${t.toriset.do.join('')}${t.toriset.dont.join('')}${TYPES[t.best].label}${t.bestWhy}${nickname}${loveText}${sk ? sk.skill.skill + sk.weak.weak : ''}${statLabels(r).join('')}${AXES.map((a) => a.neg + a.pos).join('')}わたしのポンコツ判明スワイプしてね${SITE.quizName}全タイプあるあるわかる人いる？ステータス必殺技弱点成分純度恋愛では相性◎トリセツこうしてくれるとうれしいこれはやめてね保存友達送あなたは何？無料診断問約分プロフのリンクから結果をコメントで教えてね隠しNo.よい・わるいではありません高さの目安くわしい二つ名出るよ0123456789/%→♡♥×✓「」`,
   );
   const img = await loadImage(charaDataURL(r.index));
-  return [await cover(r, t, img, nickname), aru(r, t), status(r, t), love(r, t), toriset(r, t), await last(r, t)];
+  return [await cover(r, t, img, nickname), aru(r, t, img), status(r, t), love(r, t), toriset(r, t), await last(r, t)];
+}
+
+// Instagram のフィード用（3:4・1080×1440）。9:16 の1枚を、同じ背景色の上に縮めて置く
+// （フィードでは 9:16 の上下が切れて、サイト名やスワイプの矢印が見えなくなるため）
+export function toFeed(slide, r) {
+  const t = TYPES[r.index];
+  const [canvas, ctx] = newCanvas(1080, 1440);
+  ctx.fillStyle = tint(t.color, 0.58);
+  ctx.fillRect(0, 0, 1080, 1440);
+  ctx.fillStyle = 'rgba(255,255,255,.3)';
+  for (let i = 0; i < 10; i++) {
+    ctx.beginPath();
+    ctx.arc(i % 2 ? 60 : 1020, (i * 157 + 80) % 1440, 14 + (i % 3) * 8, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  const scale = 1440 / H;
+  ctx.drawImage(slide, (1080 - W * scale) / 2, 0, W * scale, 1440);
+  slide.width = 0;
+  slide.height = 0;
+  return canvas;
 }

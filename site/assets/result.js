@@ -7,13 +7,13 @@ import { titleOf, rarityOf, priorDistribution, compatRanking, compatOf, axisLine
 import { charaSVG } from './chara.js';
 import { radarSVG } from './radar.js';
 import { drawStoryCard, drawLabelCard, canvasToBlob } from './card.js';
-import { drawCarousel } from './carousel.js';
+import { drawCarousel, toFeed } from './carousel.js';
 import { textResult } from './textshare.js';
 import { canRecordVideo, recordReveal } from './video.js';
 import { nowCard, bindNowCard } from './now.js';
 import { pollCard, bindPoll } from './polls.js';
 import { exportPayload, importPayload } from './carryover.js';
-import { app, ORIGIN, esc, store, track, loadStats, render, toast, foot, brand, shareLinks, shareImageBlob, shareImageSet, openModal, inAppHint, navNow, busy, copySilently, copyText, shareVideo } from './ui.js';
+import { app, ORIGIN, esc, store, track, loadStats, render, toast, foot, brand, shareLinks, shareImageBlob, shareImageSet, openModal, closeModal, inAppHint, navNow, busy, copySilently, copyText, shareVideo } from './ui.js';
 import { invitePairBox, inviteBanner, openInviteModal, openGroupCreate, openQuizCreate, friends } from './social.js';
 import { openProfileCard } from './profile.js';
 
@@ -102,15 +102,27 @@ function detailTeaser(r) {
   </section>`;
 }
 
-// 6枚まとめて保存（かんたん診断・くわしい診断の両方から使う）
+// 6枚まとめて保存（かんたん診断・くわしい診断の両方から使う）。
+// TikTok・ストーリー用（9:16）か、Instagram のフィード用（3:4）かを選んでもらう
 export function shareCarousel(button, r, text) {
-  return busy(button, async () => {
-    toast('6枚の画像をつくっています…');
-    const canvases = await drawCarousel(r);
-    const blobs = await Promise.all(canvases.map(canvasToBlob));
-    track('share', 'carousel');
-    await shareImageSet(blobs, { name: `ponkotsu-${typeNo(r.index)}`, text, alt: `${TYPES[r.index].label}の結果` });
-  });
+  const sheet = openModal(`<h2 class="sheet-title">どこに投稿する？</h2>
+    <button class="btn" data-ratio="story">TikTok のフォトモード・リール（縦長 9:16）</button>
+    <button class="btn sub" data-ratio="feed">Instagram の投稿（3:4）</button>
+    <button class="btn sub" data-close>とじる</button>`);
+  sheet.querySelectorAll('[data-ratio]').forEach((b) =>
+    b.addEventListener('click', () => {
+      const feed = b.dataset.ratio === 'feed';
+      closeModal();
+      busy(button, async () => {
+        toast('6枚の画像をつくっています…');
+        const slides = await drawCarousel(r);
+        const canvases = feed ? slides.map((c) => toFeed(c, r)) : slides;
+        const blobs = await Promise.all(canvases.map(canvasToBlob));
+        track('share', feed ? 'carousel-feed' : 'carousel');
+        await shareImageSet(blobs, { name: `ponkotsu-${typeNo(r.index)}${feed ? '-feed' : ''}`, text, alt: `${TYPES[r.index].label}の結果` });
+      });
+    }),
+  );
 }
 
 // 「この結果、どう？」1端末1回だけ数える（トップの「わかる〜！」の割合に使う）
