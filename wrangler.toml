@@ -1,0 +1,9 @@
+name = "ponkotsu-zukan"
+pages_build_output_dir = "dist"
+compatibility_date = "2026-10-01"
+
+# `npx wrangler d1 create ponkotsu-zukan` で作ったDBのIDを入れる
+[[d1_databases]]
+binding = "DB"
+database_name = "ponkotsu-zukan"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
