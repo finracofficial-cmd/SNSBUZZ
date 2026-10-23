@@ -30,9 +30,11 @@ function fakeD1() {
   const stmt = (sql, args = []) => ({
     bind: (...a) => stmt(sql, a),
     first: async () => db.prepare(sql).get(...args) ?? null,
+    // D1 と同じく、SELECT なら results に行が入る（batch の結果もこの形）
     run: async () => {
+      if (/^\s*SELECT/i.test(sql)) return { success: true, meta: { changes: 0 }, results: db.prepare(sql).all(...args) };
       const r = db.prepare(sql).run(...args);
-      return { success: true, meta: { changes: Number(r.changes) } };
+      return { success: true, meta: { changes: Number(r.changes) }, results: [] };
     },
     all: async () => ({ results: db.prepare(sql).all(...args) }),
   });
@@ -312,8 +314,13 @@ test('計測：許可したキーだけ数え、日別にも記録する。回�
     assert.equal((await send(k, v)).status, status, `${k}:${v}`);
   }
   assert.equal((await send('start', '', { origin: 'https://evil.example' })).status, 403);
+  assert.equal((await send('agree', 'yes')).status, 204);
+  assert.equal((await send('agree', 'maybe')).status, 400);
   const pub = await (await statsGet({ request: req('/api/stats'), env })).json();
-  assert.deepEqual(pub, { total: 2, counts: { 6: 1, 19: 1 } });
+  assert.deepEqual({ total: pub.total, counts: pub.counts }, { total: 2, counts: { 6: 1, 19: 1 } });
+  assert.equal(pub.today, 2, '今日の完了数');
+  assert.match(pub.since, /^\d{4}-\d{2}-\d{2}$/);
+  assert.deepEqual(pub.agree, { yes: 1, no: 0 });
   assert.equal((await statsGet({ request: req('/api/stats?all=1'), env })).status, 401);
   assert.equal((await statsGet({ request: req('/api/stats?all=1', bearer('kp')), env })).status, 401);
   const all = await (await statsGet({ request: req('/api/stats?all=1', bearer('kpi')), env })).json();

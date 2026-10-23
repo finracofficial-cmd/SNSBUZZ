@@ -91,15 +91,19 @@ await a.evaluate(() => {
 });
 await a.waitForTimeout(500);
 await shot(a, '01-home', false);
-await a.click('[data-go="#/q"]');
-await a.waitForSelector('.opt');
+// トップのカードで1問目に答えると、2問目から始まる
+await a.locator('[data-q1]').first().click();
+await a.waitForSelector('.qhead');
+check((await a.textContent('.qhead span')).includes('2 / 12'), `トップで1問目に答えても2問目から始まらない: ${await a.textContent('.qhead span')}`);
 await shot(a, '02-question', false);
-await answer(a, 12, (i) => (i * 3) % 4);
+await answer(a, 11, (i) => ((i + 1) * 3) % 4);
 await a.waitForSelector('.result .label', { timeout: 6000 });
 await a.waitForTimeout(500);
 const quickLabel = await a.textContent('.result .label');
 await shot(a, '03-quick-result');
 check(await a.$('.teaser-card'), 'かんたん診断の結果に、くわしい診断の入口がない');
+await a.click('[data-agree="yes"]');
+check((await a.textContent('[data-agree-card]')).includes('ありがとう'), '「わかる〜！」が押せない');
 await a.click('[data-card="story"]');
 await saveModalImage(a, '04-story-card');
 // 6枚まとめて保存（共有シートが使えない環境では、6枚が並んだ画面になる）
@@ -241,6 +245,19 @@ await shot(b, '17-type-landing');
 await b.goto(`${base}/t/s4/`);
 await b.waitForTimeout(300);
 const hiddenLabel = await b.textContent('.result .label');
+
+// 続きリンク：別のブラウザで開くと、結果とシール帳が引き継がれる
+await a.goto(`${base}/#/zukan`);
+await a.waitForSelector('.carry a');
+const carryHref = await a.getAttribute('.carry a', 'href');
+const carryUrl = new URL(decodeURIComponent(new URL(carryHref).searchParams.get('text')).split('\n').pop());
+const fresh = await phone();
+await fresh.goto(`${base}/${carryUrl.hash}`);
+await fresh.waitForSelector('.stickerbook');
+check(await fresh.evaluate(() => !!JSON.parse(localStorage.getItem('pz:mineQuick'))), '続きリンクで結果が引き継がれない');
+const metCount = await fresh.textContent('.complete b');
+check(!metCount.startsWith('0 '), `続きリンクでシールが引き継がれない: ${metCount}`);
+await fresh.context().close();
 
 // ---------- 画面幅ごとの横はみ出し ----------
 const reportHash = await a.evaluate(() => {

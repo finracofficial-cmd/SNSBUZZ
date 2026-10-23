@@ -9,6 +9,7 @@ import { radarSVG } from './radar.js';
 import { drawStoryCard, drawLabelCard, canvasToBlob } from './card.js';
 import { drawCarousel } from './carousel.js';
 import { textResult } from './textshare.js';
+import { exportPayload, importPayload } from './carryover.js';
 import { app, ORIGIN, esc, store, track, loadStats, render, toast, foot, brand, shareLinks, shareImageBlob, shareImageSet, openModal, inAppHint, navNow, busy, copySilently, copyText } from './ui.js';
 import { invitePairBox, inviteBanner, openInviteModal, openGroupCreate, openQuizCreate, friends } from './social.js';
 import { openProfileCard } from './profile.js';
@@ -109,6 +110,28 @@ export function shareCarousel(button, r, text) {
   });
 }
 
+// 「この結果、どう？」1端末1回だけ数える（トップの「わかる〜！」の割合に使う）
+function agreeCard(code) {
+  if (store.get('agreed', []).includes(code)) return '';
+  return `<section class="card agree" data-agree-card><p>この結果、どう？</p>
+    <div class="btn-row"><button class="btn sub small" data-agree="yes">わかる〜！</button><button class="btn sub small" data-agree="no">ちょっとちがう</button></div></section>`;
+}
+function bindAgree(code) {
+  app.querySelectorAll('[data-agree]').forEach((b) =>
+    b.addEventListener('click', () => {
+      const yes = b.dataset.agree === 'yes';
+      track('agree', yes ? 'yes' : 'no');
+      store.set('agreed', [...store.get('agreed', []), code].slice(-20));
+      const card = app.querySelector('[data-agree-card]');
+      if (card) {
+        card.innerHTML = yes
+          ? '<p>ありがとう！ 友達にも当ててもらおう → 下の「わたしクイズ」へ</p>'
+          : '<p>ありがとう！ 答えを少し変えると、ちがうタイプになることも。<a href="#/d">くわしい診断</a>で二つ名も見てみてね</p>';
+      }
+    }),
+  );
+}
+
 const rarityTile = (rarity) =>
   `<b>レア度</b><strong>${rarity.pct.toFixed(1)}%</strong><small>${rarity.source === 'actual' ? '診断した人の中で' : '計算上の値'}</small>`;
 
@@ -137,6 +160,7 @@ export async function viewResult(r, shareId) {
       <p class="roast"><span>${esc(t.roast)}</span></p>
     </section>
     ${invitePairBox(r)}
+    ${agreeCard(encodeResult(r))}
     <section class="share">
       <button class="btn type" data-card="story">画像を保存してストーリーに投稿</button>
       <button class="btn sub" data-carousel>6枚まとめて保存（TikTok・インスタの投稿用）</button>
@@ -195,6 +219,7 @@ export async function viewResult(r, shareId) {
   );
   const carouselButton = app.querySelector('[data-carousel]');
   carouselButton.addEventListener('click', () => shareCarousel(carouselButton, r, `${text}\n${url}`));
+  bindAgree(encodeResult(r));
   app.querySelector('[data-text]').addEventListener('click', () => {
     track('share', 'text');
     copyText(textResult(r, url));
@@ -300,7 +325,7 @@ export function viewZukan() {
     byType.get(f.result.index).push(f.name);
   });
   const got = unlockedHidden();
-  const met = new Set([...byType.keys(), ...(mine && TYPES[mine.index] ? [mine.index] : [])]);
+  const met = new Set([...byType.keys(), ...(mine && TYPES[mine.index] ? [mine.index] : []), ...store.get('metExtra', [])]);
   const cards = TYPES.map((t, i) => {
     const locked = isHidden(i) && !got.has(i);
     const isMine = mine && mine.index === i;
@@ -323,9 +348,29 @@ export function viewZukan() {
       <div class="stickerbook">${cards}</div>
     </section>
     ${mine ? '<button class="btn type" data-invite-mine style="margin-top:20px">友達を誘ってシールを集める</button>' : '<button class="btn" data-go="#/q" style="margin-top:20px">診断する</button>'}
+    ${mine ? `<section class="card carry"><h2>ほかのブラウザでも続きから</h2>
+      <p class="hint">LINEの中のブラウザと Safari・Chrome では、保存場所が別です。このリンクを LINE の Keep メモに送っておくと、どちらでも結果とシール帳の続きから遊べます。ほかの人には送らないでね。</p>
+      <a class="btn sub small" data-ch="carry:line" href="https://line.me/R/share?text=${encodeURIComponent(`ポンコツ図鑑の続きリンク（自分用）\n${ORIGIN}/#/me/${exportPayload({ mineQuick: store.get('mineQuick', null), mineDetail: store.get('mineDetail', null), met, gotHidden: store.get('gotHidden', []) })}`)}" target="_blank" rel="noopener">LINE の Keep メモに送る</a>
+    </section>` : ''}
     ${foot()}`);
   app.querySelector('[data-invite-mine]')?.addEventListener('click', () => {
     const r = decodeResult(mine.code);
     if (r) openInviteModal(r);
   });
+}
+
+// 続きリンク（#/me/...）を開いたとき：この端末にない分だけ足す
+export function receiveCarryover(payload) {
+  const data = importPayload(payload);
+  if (!data) return false;
+  const shareId = Math.random().toString(36).slice(2, 8);
+  if (data.quick && !store.get('mineQuick', null)) store.set('mineQuick', { ...data.quick, shareId });
+  if (data.detail && !store.get('mineDetail', null)) store.set('mineDetail', { ...data.detail, shareId });
+  if (!store.get('mine', null)) {
+    const m = data.detail || data.quick;
+    if (m) store.set('mine', { ...m, shareId, mode: data.detail ? 'detail' : 'quick' });
+  }
+  store.set('metExtra', [...new Set([...store.get('metExtra', []), ...data.met])]);
+  store.set('gotHidden', [...new Set([...store.get('gotHidden', []), ...data.hidden])]);
+  return true;
 }

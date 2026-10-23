@@ -13,12 +13,29 @@ export async function onRequestGet({ request, env }) {
     return Response.json(Object.fromEntries(results.map((r) => [r.k, r.n])));
   }
   // 主キーの範囲で読む（LIKE だと表全体を読んでしまう）
-  const { results } = await env.DB.prepare("SELECT k, n FROM counters WHERE k >= 'done:' AND k < 'done;'").all();
+  const day = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10); // 日本時間
+  const [done, today, first, agree] = await env.DB.batch([
+    env.DB.prepare("SELECT k, n FROM counters WHERE k >= 'done:' AND k < 'done;'"),
+    env.DB.prepare('SELECT n FROM counters WHERE k = ?1').bind(`day:${day}:done`),
+    env.DB.prepare("SELECT k FROM counters WHERE k >= 'day:' AND k < 'day;' ORDER BY k LIMIT 1"),
+    env.DB.prepare("SELECT k, n FROM counters WHERE k IN ('agree:yes', 'agree:no')"),
+  ]);
   const counts = {};
   let total = 0;
-  for (const r of results) {
+  for (const r of done.results) {
     counts[r.k.slice(5)] = r.n;
     total += r.n;
   }
-  return Response.json({ total, counts }, { headers: { 'cache-control': 'public, max-age=60' } });
+  const agreeCount = Object.fromEntries(agree.results.map((r) => [r.k.slice(6), r.n]));
+  return Response.json(
+    {
+      total,
+      counts,
+      // トップに出す実数（出すかどうかは、ブラウザ側で件数を見て決める）
+      today: today.results[0]?.n || 0,
+      since: first.results[0]?.k.slice(4, 14) || null,
+      agree: { yes: agreeCount.yes || 0, no: agreeCount.no || 0 },
+    },
+    { headers: { 'cache-control': 'public, max-age=60' } },
+  );
 }

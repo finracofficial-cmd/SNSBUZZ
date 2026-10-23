@@ -15,6 +15,10 @@ const ALLOWED = {
   paywall: (v) => (['view', 'cta', 'ask'].includes(v) ? v : null),
   quiz: (v) => (['create', 'answer', 'done'].includes(v) ? v : null),
   group: (v) => (['create', 'join'].includes(v) ? v : null),
+  // 結果への「わかる〜！」「ちょっとちがう」
+  agree: (v) => (['yes', 'no'].includes(v) ? v : null),
+  // トップの1問目のカードから始めた
+  lp: (v) => (v === 'q1' ? v : null),
   // 支払い完了とコード利用はサーバー側（unlock / redeem）で数える
   premium: (v) => (v === 'checkout' ? v : null),
   // A/Bテスト「実験:案:段階」。支払い完了（paid）はサーバー側で数える

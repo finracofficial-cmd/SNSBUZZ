@@ -44,6 +44,13 @@ export function startQuiz(mode) {
     offset: saved ? QUESTIONS.length : 0, // 通し番号のずれ
     continued: !!saved,
   };
+  // トップのカードで1問目に答えてから来たときは、2問目から始める
+  const first = !saved ? store.get('q1', null) : null;
+  store.set('q1', null);
+  if (Number.isInteger(first) && first >= 0 && first < 4) {
+    session.axis[0] = first;
+    session.pos = 1;
+  }
   // かんたん診断の開始（くわしい診断を最初から始めた人も含める）と、くわしい診断の開始を数える
   if (mode === 'quick' || !saved) track('start', '');
   if (mode === 'detail') track('detail', 'start');

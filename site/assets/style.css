@@ -500,3 +500,15 @@ svg.daily .ax { font-size: 9px; fill: var(--sub); }
 table.kpi td small { color: var(--sub); font-size: 10px; margin-left: 2px; }
 .btn.wide { display: block; width: 100%; margin-top: 8px; }
 .invite .btn { margin-top: 8px; width: auto; display: inline-block; padding: 10px 18px; }
+
+/* トップ：実数・1問目・見本・よくある質問 */
+.proof { font-size: 13px; font-weight: 800; color: var(--sub); margin: 0 0 12px; }
+.q1card .lead { color: var(--sub); font-weight: 800; font-size: 13px; margin: 0; }
+.q1card .qtext { margin: 6px 0 12px; font-size: 20px; color: var(--ink); letter-spacing: 0; }
+.sample-list { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.sample-card { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 4px; text-decoration: none; color: var(--ink); background: color-mix(in srgb, var(--c) 18%, #fff); border-radius: 16px; padding: 10px 6px; }
+.sample-card b { font-size: 12px; line-height: 1.35; letter-spacing: -.02em; word-break: keep-all; overflow-wrap: anywhere; }
+.sample-card span { font-size: 11px; color: var(--sub); line-height: 1.45; }
+.faq details { border-top: 1px solid var(--line); padding: 8px 0; }
+.faq summary { font-weight: 800; cursor: pointer; }
+.faq p { margin: 6px 0 0; font-size: 14px; }

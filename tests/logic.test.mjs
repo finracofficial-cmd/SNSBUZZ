@@ -263,3 +263,16 @@ test('テキストの結果：軸は寄っている側と5マスのバー。く�
   assert.ok(!/\d+%/.test(t2.split('\n').slice(3).join('\n')), 'パラメータの％は入れない');
   assert.match(t2, /恋愛積極[SABCD] /);
 });
+
+test('続きリンク：結果・図鑑・隠しタイプを往復でき、おかしな値は捨てる', async () => {
+  const { exportPayload, importPayload } = await import('../site/assets/carryover.js');
+  const quick = encodeResult(judge({ axis: [0, 3, 1, 2, 0, 1, 3, 2, 1, 0, 2, 3] }));
+  const p = exportPayload({ mineQuick: { code: quick }, mineDetail: null, met: new Set([0, 5, 19, 99]), gotHidden: [19, 3] });
+  const back = importPayload(p);
+  assert.equal(back.quick.code, quick);
+  assert.equal(back.detail, null);
+  assert.deepEqual(back.met, [0, 5, 19]);
+  assert.deepEqual(back.hidden, [19]);
+  assert.equal(importPayload('!!!'), null);
+  assert.equal(importPayload(btoa('{"q":"<script>","m":"x"}')).quick, null);
+});

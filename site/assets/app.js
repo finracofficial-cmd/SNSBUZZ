@@ -1,12 +1,12 @@
 // 入口：ホーム・ルーティング。質問・結果・レポート・ふたり/グループ・完全版は別モジュール。
 import './fonts.js';
 import { SITE } from './config.js';
-import { TYPES, HIDDEN, QUESTIONS, PARAM_QUESTIONS, indexFromNo } from './data.js';
+import { TYPES, HIDDEN, BASE_COUNT, QUESTIONS, PARAM_QUESTIONS, indexFromNo, typeNo } from './data.js';
 import { decodeResult } from './logic.js';
 import { charaSVG } from './chara.js';
-import { app, esc, store, track, render, foot, brand, toast, handleShareClick, closeModal, navBegin, navNow, safeDecode } from './ui.js';
-import { startQuiz, handleQuizClick, cancelQuiz, savedQuickAnswers } from './quiz.js';
-import { viewResult, viewType, viewZukan, showLockedType } from './result.js';
+import { app, esc, store, track, render, foot, brand, toast, handleShareClick, closeModal, navBegin, navNow, safeDecode, loadStats } from './ui.js';
+import { startQuiz, handleQuizClick, cancelQuiz, savedQuickAnswers, optionOrder } from './quiz.js';
+import { viewResult, viewType, viewZukan, showLockedType, receiveCarryover } from './result.js';
 import { viewReport } from './report.js';
 import { viewAdmin } from './admin.js';
 import {
@@ -37,6 +37,33 @@ import {
 } from './premium.js';
 
 // ---------- ホーム ----------
+// 実数は、十分にたまってから・上2けたで切り捨てて出す（盛った数字や、自動で増える演出はしない）
+const floor2 = (n) => {
+  const digits = String(Math.floor(n)).length;
+  const unit = 10 ** Math.max(digits - 2, 0);
+  return (Math.floor(n / unit) * unit).toLocaleString('ja-JP');
+};
+export function proofText(stats) {
+  if (!stats || stats.error) return '';
+  const parts = [];
+  if (stats.total >= 1000 && stats.today >= 100) {
+    parts.push(`きょう${floor2(stats.today)}人・これまで${floor2(stats.total)}人が診断${stats.since ? `（${stats.since.replace(/-/g, '/')}から集計）` : ''}`);
+  }
+  const answered = (stats.agree?.yes || 0) + (stats.agree?.no || 0);
+  if (answered >= 300) parts.push(`結果に「わかる〜！」と答えた人 ${Math.floor((stats.agree.yes / answered) * 100)}%`);
+  return parts.join('<br>');
+}
+
+// こんな結果が出ます（見本の3タイプ）
+const SAMPLES = [6, 3, 12];
+// よくある質問
+const FAQ = [
+  ['無料ですか？', `診断（かんたん${QUESTIONS.length}問・くわしい＋${PARAM_QUESTIONS.length}問）は無料です。くわしい診断のくわしい解説だけ、完全版（有料・買い切り）で読めます。`],
+  ['登録やメールアドレスはいりますか？', 'いりません。結果はこのブラウザに保存されます。'],
+  ['当たりますか？', 'エンタメ診断です。心理学にもとづく検査や占いではありません。「わかる〜！」と笑って楽しんでください。'],
+  ['友達と相性をくらべるには？', '結果ページの「友達と相性をくらべる」からリンクを送るか、結果のリンクをそのままシェアしてください。友達が診断すると、ふたりの相性が出ます。'],
+];
+
 async function viewHome() {
   const gen = navNow();
   const parade = [3, 6, 8, 12, 10, 14, 7, 1].map((i) => charaSVG(i, { size: 100 })).join('');
@@ -45,6 +72,7 @@ async function viewHome() {
   const canContinue = !!savedQuickAnswers() && !store.get('mineDetail', null);
   const price = priceOf(await premiumStatus());
   if (gen !== navNow()) return;
+  const q1 = QUESTIONS[0];
   render(`
     ${inviteBanner()}
     ${pendingGroup ? '<div class="invite"><div>グループ診断に参加するには、まず診断してね</div></div>' : ''}
@@ -52,6 +80,7 @@ async function viewHome() {
       <h1><small>${esc(SITE.name)}</small>${esc(SITE.quizName)}</h1>
       <p class="catch">${esc(SITE.catchCopy)}</p>
       <div class="parade" aria-hidden="true">${parade}</div>
+      <p class="proof" data-proof hidden></p>
       <button class="btn" data-go="#/q">かんたん診断（${QUESTIONS.length}問・約1分）</button>
       <button class="btn type" data-go="#/d">${canContinue
         ? `くわしい診断の続き（あと${PARAM_QUESTIONS.length}問）`
@@ -60,7 +89,15 @@ async function viewHome() {
       <div class="meta-row"><span class="pill">16タイプ＋隠し${HIDDEN.length}タイプ</span><span class="pill">二つ名240通り</span><span class="pill">診断は無料・登録なし</span></div>
     </section>
     ${mine && TYPES[mine.index] && mine.code ? `<a class="card mini-result" href="#/r/${esc(mine.code)}/${esc(mine.shareId)}">
-      ${charaSVG(mine.index, { size: 64 })}<div><small>前回のあなた</small><b>${esc(TYPES[mine.index].label)}</b></div><span>結果を見る →</span></a>` : ''}
+      ${charaSVG(mine.index, { size: 64 })}<div><small>前回のあなた</small><b>${esc(TYPES[mine.index].label)}</b></div><span>結果を見る →</span></a>` : `
+    <section class="card q1card"><p class="lead">さっそく1問目（全${QUESTIONS.length}問）</p>
+      <h2 class="qtext">${esc(q1.text)}</h2>
+      <div class="opts">${optionOrder('axis', 0).map((j) => `<button class="opt" data-q1="${j}">${esc(q1.options[j].text)}</button>`).join('')}</div>
+    </section>`}
+    <section class="card samples"><h2>こんな結果が出ます</h2>
+      <div class="sample-list">${SAMPLES.map((i) => `<a class="sample-card" href="/t/${typeNo(i).toLowerCase()}/" style="--c:${TYPES[i].color}">${charaSVG(i, { size: 72 })}<b>${esc(TYPES[i].label)}</b><span>${esc(TYPES[i].roast.replace(/^でも、?/, ''))}</span></a>`).join('')}</div>
+      <a class="linkish" href="/types/">全${BASE_COUNT}タイプを見る</a>
+    </section>
     <section class="card features">
       <h2>できること</h2>
       <ul>
@@ -74,9 +111,28 @@ async function viewHome() {
       <div class="silhouettes">${HIDDEN.map((h) => charaSVG(h.index, { size: 72 })).join('')}</div>
       <p class="hint">特定の答え方をした人だけが出会えるレアタイプ。いちばんレアなタイプは、計算上の出現率が1%以下。</p>
     </section>
+    <section class="card faq"><h2>よくある質問</h2>
+      ${FAQ.map(([q, a]) => `<details><summary>${esc(q)}</summary><p>${esc(a)}</p></details>`).join('')}
+    </section>
     <button class="btn sub" data-group-create>グループ診断をつくる</button>
     ${foot()}`);
   app.querySelector('[data-group-create]').addEventListener('click', openGroupCreate);
+  app.querySelectorAll('[data-q1]').forEach((b) =>
+    b.addEventListener('click', () => {
+      b.classList.add('on');
+      store.set('q1', Number(b.dataset.q1));
+      track('lp', 'q1');
+      setTimeout(() => (location.hash = '#/q'), 160);
+    }),
+  );
+  loadStats().then((stats) => {
+    const text = gen === navNow() ? proofText(stats) : '';
+    const el = app.querySelector('[data-proof]');
+    if (el && text) {
+      el.innerHTML = text;
+      el.hidden = false;
+    }
+  });
   watchClaim(() => route());
   maybeShowAfterPurchase();
 }
@@ -205,6 +261,10 @@ async function routeInner() {
     const mine = store.get('mine', null);
     history.replaceState(null, '', `${location.pathname}${mine?.code ? `#/r/${mine.code}/${mine.shareId}` : '#/'}`);
     route();
+  } else if (view === 'me') {
+    toast(receiveCarryover(a) ? '続きから遊べるようにしました' : 'リンクを確認できませんでした');
+    history.replaceState(null, '', `${location.pathname}#/zukan`);
+    viewZukan();
   } else if (view === 'admin') await viewAdmin();
   else if (view === 'about') viewAbout();
   else if (view === 'legal') await viewLegal();
