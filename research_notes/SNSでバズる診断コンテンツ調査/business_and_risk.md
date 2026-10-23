@@ -32,7 +32,7 @@ No reliable, published RPM benchmark exists for Japanese diagnosis/entertainment
 
 **AdSense spike / invalid-traffic risk (official)**
 - Ad serving limit: "トラフィックの品質を評価する間、アカウントでの広告配信は一時的に制限されています". Limits are applied while Google evaluates traffic quality, or when invalid traffic is found. They usually last under 30 days but can be longer, and "永久的に閉鎖される可能性があります" if invalid activity is found — [Google AdSense Help: 広告配信の制限](https://support.google.com/adsense/answer/9437976?hl=ja)
-- Invalid traffic includes "広告主様の費用やパブリッシャー様の収益を作為的に増やす可能性のあるクリックやインプレッション", including accidental clicks. Publishers are ultimately responsible even for third-party-caused invalid traffic — [Google AdSense Help: 無効なトラフィック](https://support.google.com/adsense/answer/16737)
+- Invalid traffic includes "広告主様の費用やパブリッシャー様の収益を作為的に増やす可能性のあるクリックやインプレッション", including accidental clicks. Publishers are ultimately responsible even for third-party-caused invalid traffic — [Google AdSense Help: 無効なトラフィック](https://support.google.com/adsense/answer/16737); [Google AdSense Help (invalid activity)](https://support.google.com/adsense/answer/1348729). These quotes came from search snippets; which of the two pages each quote is from was not confirmed.
 - The program policies prohibit:
   - clicking your own ads;
   - encouraging clicks with phrases like 「広告をクリック」「ご協力ください」, or using arrows/images to draw attention to ads;
