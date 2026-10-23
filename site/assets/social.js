@@ -5,7 +5,8 @@ import { compatOf, decodeResult, encodeResult, quickCodeOf, resultFromSums, axis
 import { charaSVG } from './chara.js';
 import { drawPairCard, canvasToBlob } from './card.js';
 import { optionOrder } from './quiz.js';
-import { app, ORIGIN, esc, cleanName, store, track, api, render, toast, openModal, closeModal, foot, brand, shareLinks, shareImageBlob, navNow, busy } from './ui.js';
+import { app, ORIGIN, esc, cleanName, store, track, api, render, toast, openModal, closeModal, foot, brand, shareLinks, shareImageBlob, navNow, busy, copyText } from './ui.js';
+import { jstParts } from './clock.js';
 
 // ---------- 出会ったタイプ（図鑑のコンプリート用） ----------
 export function addFriend(rawName, code) {
@@ -186,15 +187,30 @@ function pairAxes(a, b, nameA, nameB) {
 }
 
 // ---------- グループ診断 ----------
+// event は、文化祭・修学旅行の季節（9〜11月）に添える「行事なら」の言いかえ（判定は同じ）
 const ROLES = [
-  { name: '幹事役', score: (s) => s[0] + s[1] - s[2] },
-  { name: 'ムードメーカー', score: (s) => s[1] + s[2] },
-  { name: '切り込み隊長', score: (s) => s[0] + s[2] },
-  { name: '参謀', score: (s) => -s[2] - s[3] },
-  { name: '癒やし担当', score: (s) => -s[0] + s[3] },
-  { name: '聞き役', score: (s) => -s[1] - s[3] },
-  { name: '自由人', score: (s) => s[2] + s[3] - s[1] },
+  { name: '幹事役', icon: '👑', event: '実行委員', score: (s) => s[0] + s[1] - s[2] },
+  { name: 'ムードメーカー', icon: '🎉', event: '応援・盛り上げ係', score: (s) => s[1] + s[2] },
+  { name: '切り込み隊長', icon: '⚡', event: '呼びこみ係', score: (s) => s[0] + s[2] },
+  { name: '参謀', icon: '🧠', event: '企画・会計係', score: (s) => -s[2] - s[3] },
+  { name: '癒やし担当', icon: '🍵', event: '休憩所の主', score: (s) => -s[0] + s[3] },
+  { name: '聞き役', icon: '👂', event: 'グチ聞き係', score: (s) => -s[1] - s[3] },
+  { name: '自由人', icon: '🎈', event: '当日ふらっと現れる係', score: (s) => s[2] + s[3] - s[1] },
 ];
+const eventSeason = () => [9, 10, 11].includes(jstParts().m);
+
+// グループの結果をテキストで（LINEのトークにそのまま貼れる形）
+export function groupText({ name, members, roles, bestPair, groupType, url }) {
+  return [
+    `【${name}】のグループ診断（${members.length}人）`,
+    ...roles.map((r) => `${r.icon} ${r.role}：${r.member.nick}（${TYPES[r.member.result.index].label}）`),
+    ...(bestPair ? [`💞 ベストペア：${bestPair.a.nick} × ${bestPair.b.nick}（${bestPair.c.score}%）`] : []),
+    ...(groupType != null ? [`チームをひとことで：「${TYPES[groupType].label}」っぽいチーム`] : []),
+    '',
+    `#${SITE.hashtag} まだの人はここから参加してね`,
+    url,
+  ].join('\n');
+}
 
 export function groupRoles(members) {
   const taken = new Set();
@@ -207,7 +223,7 @@ export function groupRoles(members) {
       .sort((x, y) => y.v - x.v)[0];
     if (!best) break;
     taken.add(best.m.id);
-    out.push({ role: role.name, member: best.m });
+    out.push({ role: role.name, icon: role.icon, event: role.event, member: best.m });
   }
   return out;
 }
@@ -309,18 +325,24 @@ export async function viewGroup(id) {
     <div class="card"><h2>メンバー</h2><div class="members">${members.map((m) => `
       <div class="member-wrap"><a class="member ${m.id === me ? 'mine' : ''}" href="#/t/${typeNo(m.result.index).toLowerCase()}">${charaSVG(m.result.index, { size: 64 })}<b>${esc(m.nick)}</b><small>${esc(TYPES[m.result.index].label)}</small></a>
       ${g.admin && m.id !== me ? `<button class="linkish small" data-kick="${esc(m.id)}" aria-label="${esc(m.nick)}をグループから外す">外す</button>` : ''}</div>`).join('')}</div></div>
-    <div class="card"><h2>グループ内の役割</h2><ul class="roles">${roles.map((r) => `<li><span class="chip">${esc(r.role)}</span>${esc(r.member.nick)}</li>`).join('')}</ul></div>
+    <div class="card"><h2>グループ内の役割</h2><ul class="roles">${roles.map((r) => `<li><span class="chip">${esc(r.role)}</span>${esc(r.member.nick)}${eventSeason() ? `<small>文化祭なら：${esc(r.event)}</small>` : ''}</li>`).join('')}</ul></div>
     <div class="card"><h2>このグループをひとことで</h2>
       <p>${top[1] > 1 ? `いちばん多いのは「${esc(TYPES[top[0]].label)}」（${top[1]}人）。` : 'メンバー全員がちがうタイプの、バラエティ豊かなグループ。'}グループ全体を1人にすると「${esc(TYPES[groupType].label)}」っぽいチームです。</p>
       ${bestPair ? `<p>いちばん相性がいいのは <b>${esc(bestPair.a.nick)}</b> × <b>${esc(bestPair.b.nick)}</b>（${bestPair.c.score}%・${esc(bestPair.c.rank)}）。</p>` : ''}
+      ${members.length >= 2 ? '<button class="btn sub small wide" data-group-text>結果をテキストでコピー（LINEに貼る用）</button>' : ''}
     </div>` : ''}
     <div class="card"><h2>メンバーを集める</h2>${shareLinks({ text: `「${g.name}」のグループ診断。みんなのポンコツタイプと役割がわかるよ`, url, channelPrefix: 'group:' }).html}
+      <p class="hint">LINEグループに送ったら、メッセージを長押しして「アナウンス」で固定しておくと、あとから来た人も参加できます。</p>
       <p class="hint">このグループは ${new Date(g.expiresAt).toLocaleDateString('ja-JP')} に消えます。</p></div>
     ${joined || g.admin ? `<div class="card"><h2>グループの設定</h2><div class="btn-col">
       ${joined ? '<button class="btn sub small" data-leave>このグループから抜ける</button>' : ''}
       ${g.admin ? '<button class="btn sub small" data-delete-group>グループを消す（作った人だけ）</button>' : ''}
     </div></div>` : ''}
     ${foot()}`);
+  app.querySelector('[data-group-text]')?.addEventListener('click', () => {
+    track('share', 'group-text');
+    copyText(groupText({ name: g.name, members, roles, bestPair, groupType, url }));
+  });
   const join = app.querySelector('#join');
   if (join) {
     join.onclick = async () => {

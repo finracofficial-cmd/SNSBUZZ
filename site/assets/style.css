@@ -242,6 +242,7 @@ ol.ranking b { font-size: 13px; text-align: right; font-variant-numeric: tabular
 .member small { font-size: 11px; color: var(--sub); line-height: 1.3; }
 ul.roles { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 ul.roles .chip { margin-right: 8px; min-width: 7em; text-align: center; }
+ul.roles small { display: block; margin: 2px 0 0 calc(7em + 8px); color: var(--sub); font-size: 12px; }
 
 /* 図鑑 */
 .complete { position: relative; display: flex; justify-content: space-between; align-items: center; background: var(--paper); border: 2px solid var(--line); border-radius: 14px; padding: 8px 14px; margin-top: 12px; overflow: hidden; }
