@@ -1,6 +1,7 @@
 // 購入の記録（D1 の purchases・claims）。Webhook と /api/unlock の両方から呼ぶので、何度呼んでも同じ結果になるようにする。
 import { issueToken } from './token.js';
 import { sha256Hex } from './http.js';
+import { EXPERIMENTS } from './experiments.js';
 
 // このサイトが作った Checkout Session か（同じ Stripe アカウントのほかの商品では開けない）
 export const isOurSession = (s) => s?.metadata?.app === 'ponkotsu' && ['solo', 'duo'].includes(s?.metadata?.plan);
@@ -18,6 +19,20 @@ export async function claimIdOf(secret) {
   return out;
 }
 
+// 決済に付けてきたA/Bテストの目印（"paybar:amount,autopay:on"）のうち、定義にあるものだけ
+// 1つの実験につき1つだけ（同じ実験の案が2つ来ても、最初の1つだけ数える）
+export function abTagsOf(raw) {
+  const seen = new Set();
+  return String(raw || '')
+    .split(',')
+    .filter((tag) => {
+      const [name, variant] = tag.split(':');
+      if (!Object.hasOwn(EXPERIMENTS, name) || !EXPERIMENTS[name].includes(variant) || seen.has(name)) return false;
+      seen.add(name);
+      return true;
+    });
+}
+
 // 支払い済みの Session を記録する。新しく記録したときだけ isNew = true（支払い完了の数はそのときだけ数える）
 export async function recordPurchase(env, session) {
   const id = purchaseIdOf(session.id);
@@ -32,7 +47,10 @@ export async function recordPurchase(env, session) {
   const stmts = [];
   if (isNew) {
     const bump = env.DB.prepare('INSERT INTO counters (k, n) VALUES (?1, 1) ON CONFLICT(k) DO UPDATE SET n = n + 1');
-    stmts.push(bump.bind(`premium:paid:${plan}`), bump.bind('premium:paid'));
+    const day = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10); // 日本時間
+    stmts.push(bump.bind(`premium:paid:${plan}`), bump.bind('premium:paid'), bump.bind(`day:${day}:paid`));
+    // A/Bテストの案ごとの支払い完了
+    abTagsOf(session.metadata?.ab).forEach((tag) => stmts.push(bump.bind(`ab:${tag}:paid`)));
   }
   const rid = session.client_reference_id;
   if (rid && /^[a-z2-7]{16}$/.test(rid)) {

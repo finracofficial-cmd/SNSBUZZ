@@ -236,3 +236,16 @@ test('集計が少ないうちは理論値、十分あれば実データでレ�
   assert.equal(r.source, 'actual');
   assert.ok(Math.abs(r.pct - 3.1) < 1e-9);
 });
+
+test('A/Bテスト：ブラウザとサーバーの定義が同じ。z検定の p 値が妥当', async () => {
+  const site = await import('../site/assets/experiments.js');
+  const server = await import('../functions/_lib/experiments.js');
+  assert.deepEqual(site.EXPERIMENTS, server.EXPERIMENTS);
+  assert.deepEqual(site.AB_STEPS, server.AB_STEPS);
+  assert.equal(site.twoProportion(1, 10, 2, 10), null, '少なすぎるときは判断しない');
+  assert.ok(Math.abs(site.twoProportion(50, 100, 50, 100) - 1) < 1e-6, '同じ割合なら p=1');
+  // 30/1000 と 60/1000 は有意（p ≈ 0.0013）
+  const p = site.twoProportion(30, 1000, 60, 1000);
+  assert.ok(p > 0.0005 && p < 0.003, `p=${p}`);
+  assert.ok(site.twoProportion(30, 1000, 36, 1000) > 0.05);
+});

@@ -151,6 +151,9 @@ test('決済の開始：Stripeの価格と画面の価格がちがえば止め�
     assert.equal(form.get('payment_method_types[1]'), null);
     assert.match(form.get('cancel_url'), /\/thanks\/\?canceled=1$/);
     assert.match(form.get('custom_text[submit][message]'), /返品・キャンセルはできません/);
+    assert.equal(form.get('metadata[ab]'), null);
+    await checkoutPost({ request: post('/api/checkout', { plan: 'solo', ab: 'paybar:specific,paybar:amount,autopay:off,evil:x' }), env });
+    assert.equal(new URLSearchParams(stripe.sent.at(-1).body).get('metadata[ab]'), 'paybar:specific,autopay:off', 'A/Bの目印は定義にあるもの・1実験1つだけ');
     // おうちの人の購入（index なし）では、タイプを記録しない。古い形式の受け取りIDは使わない
     await checkoutPost({ request: post('/api/checkout', { plan: 'weird', index: null, rid: 'abcdefgh12345678' }), env });
     const form2 = new URLSearchParams(stripe.sent.at(-1).body);
@@ -170,7 +173,7 @@ test('支払いの受け取り：記録は1回だけ数え、ほかの商品・�
   const DB = fakeD1();
   const env = { ...SECRET, ...STRIPE, DB };
   const stripe = stubStripe({
-    cs_test_solo00000000: paid('solo'),
+    cs_test_solo00000000: paid('solo', { metadata: { app: 'ponkotsu', plan: 'solo', ab: 'paybar:specific,autopay:on' } }),
     cs_test_other0000000: { payment_status: 'paid', created: now(), metadata: { plan: 'solo' } },
     cs_test_unpaid000000: { payment_status: 'unpaid', created: now(), metadata: { app: 'ponkotsu', plan: 'solo' } },
     cs_test_old000000000: paid('solo', { created: now() - 25 * 3600 }),
@@ -186,6 +189,8 @@ test('支払いの受け取り：記録は1回だけ数え、ほかの商品・�
     assert.equal((await unlock('cs_test_solo00000000')).status, 200, '再読みこみしても受け取れる');
     const count = DB.raw.prepare("SELECT n FROM counters WHERE k = 'premium:paid:solo'").get();
     assert.equal(count.n, 1, '支払い完了は1回だけ数える');
+    assert.equal(DB.raw.prepare("SELECT n FROM counters WHERE k = 'ab:paybar:specific:paid'").get().n, 1, 'A/Bの案ごとの支払い完了');
+    assert.equal(DB.raw.prepare("SELECT COUNT(*) AS n FROM counters WHERE k LIKE 'day:%:paid'").get().n, 1, '日別の支払い完了');
     assert.equal((await unlock('cs_test_other0000000')).status, 404);
     assert.equal((await unlock('cs_test_unpaid000000')).status, 402);
     assert.equal((await unlock('cs_test_old000000000')).status, 410);
@@ -298,6 +303,11 @@ test('計測：許可したキーだけ数え、日別にも記録する。回�
     ['premium', 'paid', 400],
     ['constructor', 'x', 400],
     ['__proto__', 'x', 400],
+    ['ab', 'paybar:amount:exposure', 204],
+    ['ab', 'autopay:off:checkout', 204],
+    ['ab', 'paybar:amount:paid', 400],
+    ['ab', 'paybar:nope:exposure', 400],
+    ['ab', 'hasOwnProperty:x:exposure', 400],
   ]) {
     assert.equal((await send(k, v)).status, status, `${k}:${v}`);
   }

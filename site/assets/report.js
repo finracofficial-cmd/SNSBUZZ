@@ -13,6 +13,7 @@ import { openPaywall, fetchPremium, hasPremium, previewUnlocked, watchClaim, pre
 import { openInviteModal, openGroupCreate, invitePairBox, openQuizCreate } from './social.js';
 import { openProfileCard } from './profile.js';
 import { shareCarousel } from './result.js';
+import { variant, abTrack } from './ab.js';
 
 const typePath = (index) => `#/t/${typeNo(index).toLowerCase()}`;
 
@@ -145,6 +146,13 @@ function lockedLength(r) {
   return params + l.detail + sum(l.tips) + l.bestWhy + n.deep + sum(n.growth) + n.loveDeep + n.next + n.letter;
 }
 
+// 画面下の固定バー（A/Bテスト paybar：量で見せるか、中身で見せるか）
+function paybar(locked, price) {
+  return variant('paybar') === 'specific'
+    ? `<div class="paybar" role="region" aria-label="完全版"><span><b>「本当のあなた」</b>と恋愛の攻略法を読む</span><button class="btn gold small" data-paywall>${price}円で読む</button></div>`
+    : `<div class="paybar" role="region" aria-label="完全版"><span>のこり<b>7章・約${locked}字</b>がモザイク中</span><button class="btn gold small" data-paywall>${price}円で全部読む</button></div>`;
+}
+
 // ---------- ページ ----------
 export async function viewReport(r, shareId) {
   const gen = navNow();
@@ -214,7 +222,7 @@ export async function viewReport(r, shareId) {
     </section>
     <button class="btn sub" data-go="#/zukan">図鑑をみる</button>
     ${foot()}
-    ${prem || failed ? '' : `<div class="paybar" role="region" aria-label="完全版"><span>のこり<b>7章・約${locked}字</b>がモザイク中</span><button class="btn gold small" data-paywall>${price}円で全部読む</button></div>`}`, r.index);
+    ${prem || failed ? '' : paybar(locked, price)}`, r.index);
 
   document.body.classList.toggle('has-paybar', !prem && !failed);
   app.querySelector('[data-reload]')?.addEventListener('click', () => viewReport(r, shareId));
@@ -257,9 +265,10 @@ export async function viewReport(r, shareId) {
   );
 
   if (!prem && !failed) {
-    // 第1章を読み終えたあたりで、一度だけ購入の案内を出す（自動で出すのは1回まで）
+    abTrack('exposure');
+    // 第1章を読み終えたあたりで、一度だけ購入の案内を出す（自動で出すのは1回まで。A/Bテスト autopay で出さない案もある）
     const ch2 = app.querySelector('#ch2');
-    if (ch2 && 'IntersectionObserver' in window) {
+    if (ch2 && 'IntersectionObserver' in window && variant('autopay') === 'on') {
       const io = new IntersectionObserver((entries) => {
         if (entries.some((e) => e.isIntersecting)) {
           io.disconnect();

@@ -9,6 +9,7 @@
 import { SITE } from './config.js';
 import { TYPES } from './data.js';
 import { ORIGIN, esc, store, api, toast, openModal, closeModal, track, copyText, inAppBrowser, navNow } from './ui.js';
+import { abTrack, abTag } from './ab.js';
 
 const METHOD_NAMES = { card: 'クレジットカード（Apple Pay・Google Pay をふくむ）', paypay: 'PayPay' };
 const FALLBACK = { enabled: false, plans: [{ id: 'solo', price: SITE.premiumPrice, name: 'じぶん用', available: false }], methods: ['card'] };
@@ -113,6 +114,7 @@ export async function openPaywall(r, { auto = false } = {}) {
   paywallShown = true;
   store.set('paywallSeen', true);
   track('paywall', auto ? 'view' : 'cta');
+  if (!auto) abTrack('cta');
   const gen = navNow();
   const s = await premiumStatus();
   if (gen !== navNow()) return;
@@ -184,13 +186,15 @@ function confirmPurchase(r, plan, s, rid = '') {
     }
     const button = sheet.querySelector('#buy-go');
     button.disabled = true;
-    const res = await api('checkout', { method: 'POST', body: { plan: plan.id, index: r?.index ?? null, rid }, timeout: 8000 });
+    // おうちの人の支払い（rid あり）は、子どもの端末のA/Bテストとは別の端末なので目印を付けない
+    const res = await api('checkout', { method: 'POST', body: { plan: plan.id, index: r?.index ?? null, rid, ab: rid ? '' : abTag() }, timeout: 8000 });
     if (!res?.url) {
       msg.textContent = res?.error === 'rate' ? '少し待ってから、もう一度ためしてください' : 'いまは購入できません。時間をおいて試してください';
       button.disabled = false;
       return;
     }
     track('premium', 'checkout');
+    if (!rid) abTrack('checkout');
     store.set('returnHash', rid ? '#/buy/done' : location.hash || '#/');
     location.href = res.url;
   };

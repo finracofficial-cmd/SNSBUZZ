@@ -155,6 +155,16 @@ await a.waitForSelector('#join', { timeout: 8000 });
 check((await a.locator('.member').count()) === 0, 'グループから抜けられない');
 await a.screenshot({ path: path.join(outDir, 'group.png'), fullPage: true });
 
+// 7. 運営用のKPI画面（A/Bテストの表示数も入っている）
+await a.goto(`${base}/#/admin`);
+await a.fill('#kpi-token', 'dev');
+await a.click('#kpi-form button');
+await a.waitForSelector('table.kpi', { timeout: 8000 });
+check((await a.locator('table.kpi').count()) >= 5, 'KPI画面の表が足りない');
+const abExposure = await a.evaluate(() => [...document.querySelectorAll('table.kpi td')].some((td) => td.textContent === 'amount' || td.textContent === 'specific'));
+check(abExposure, 'A/Bテストの表が出ていない');
+await a.screenshot({ path: path.join(outDir, 'admin.png'), fullPage: true });
+
 await browser.close();
 console.log(JSON.stringify({ sampleLength: sample?.length, errors, failures }, null, 2));
 if (errors.length || failures.length) process.exit(1);

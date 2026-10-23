@@ -84,6 +84,11 @@ const premiumSnippets = [
 // ---------- 1人目 ----------
 const a = await phone();
 await a.goto(`${base}/`);
+// A/Bテストの案を固定する（自動の購入案内が出る案・量で見せるバー）
+await a.evaluate(() => {
+  localStorage.setItem('pz:ab:autopay', JSON.stringify('on'));
+  localStorage.setItem('pz:ab:paybar', JSON.stringify('amount'));
+});
 await a.waitForTimeout(500);
 await shot(a, '01-home', false);
 await a.click('[data-go="#/q"]');

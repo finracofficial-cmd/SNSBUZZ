@@ -485,3 +485,13 @@ fieldset.age legend { font-size: 13px; font-weight: 800; padding: 0 6px; }
 .type-card small { display: block; color: var(--sub); font-size: 11px; }
 .type-card b { display: block; font-size: 17px; }
 .type-card span { display: block; font-size: 13px; color: var(--sub); }
+
+/* 運営用のKPI画面 */
+table.kpi { width: 100%; border-collapse: collapse; font-size: 13px; margin: 6px 0; }
+table.kpi th, table.kpi td { padding: 4px 6px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+table.kpi th:first-child, table.kpi td:first-child { white-space: normal; word-break: keep-all; }
+table.kpi td small { display: block; }
+table.kpi th:first-child, table.kpi td:first-child { text-align: left; }
+svg.daily { width: 100%; height: auto; }
+svg.daily .ax { font-size: 9px; fill: var(--sub); }
+table.kpi td small { color: var(--sub); font-size: 10px; margin-left: 2px; }

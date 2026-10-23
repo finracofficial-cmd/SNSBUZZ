@@ -3,6 +3,7 @@
 // 画面に出している価格と、Stripe に登録した価格がちがうときは販売しない（表示と請求額のずれを防ぐ）。
 import { json, readJson, rateLimited, crossSite } from '../_lib/http.js';
 import { premiumEnabled, priceIdOf, plansOf, paymentMethodsOf } from '../_lib/token.js';
+import { abTagsOf } from '../_lib/purchase.js';
 
 const priceCache = new Map();
 async function stripePrice(env, priceId) {
@@ -49,6 +50,8 @@ export async function onRequestPost({ request, env }) {
   paymentMethodsOf(env).forEach((m, i) => form.set(`payment_method_types[${i}]`, m));
   if (Number.isInteger(body?.index) && body.index >= 0 && body.index < 20) form.set('metadata[type]', String(body.index));
   if (rid) form.set('client_reference_id', rid);
+  const ab = abTagsOf(body?.ab);
+  if (ab.length) form.set('metadata[ab]', ab.join(','));
   const res = await fetch('https://api.stripe.com/v1/checkout/sessions', {
     method: 'POST',
     headers: { authorization: `Bearer ${env.STRIPE_SECRET_KEY}`, 'content-type': 'application/x-www-form-urlencoded' },

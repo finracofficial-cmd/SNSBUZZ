@@ -7,6 +7,7 @@ import { app, esc, store, track, render, foot, brand, toast, handleShareClick, c
 import { startQuiz, handleQuizClick, cancelQuiz, savedQuickAnswers } from './quiz.js';
 import { viewResult, viewType, viewZukan, showLockedType } from './result.js';
 import { viewReport } from './report.js';
+import { viewAdmin } from './admin.js';
 import {
   receiveInvite,
   inviteBanner,
@@ -202,7 +203,8 @@ async function routeInner() {
     const mine = store.get('mine', null);
     history.replaceState(null, '', `${location.pathname}${mine?.code ? `#/r/${mine.code}/${mine.shareId}` : '#/'}`);
     route();
-  } else if (view === 'about') viewAbout();
+  } else if (view === 'admin') await viewAdmin();
+  else if (view === 'about') viewAbout();
   else if (view === 'legal') await viewLegal();
   else if (!location.hash && page === 'types') {
     // 全タイプ一覧は、書き出した静的なページをそのまま使う
