@@ -9,9 +9,11 @@
 // タイプページ・一覧・トップには、中身を静的なHTMLとして書き出す（scripts/prerender.mjs）
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
+import { build as esbuild, transform } from 'esbuild';
 import { SITE } from '../site/assets/config.js';
 import { TYPES, BASE_COUNT, typeNo } from '../site/assets/data.js';
-import { typeBody, typesBody, homeBody, breadcrumbLd } from './prerender.mjs';
+import { typeBody, typesBody, homeBody, loadingBody, breadcrumbLd } from './prerender.mjs';
 
 const src = path.resolve('site');
 const dist = path.resolve('dist');
@@ -74,19 +76,19 @@ TYPES.forEach((t, i) => {
     image: `${origin}/og/${no}.png`,
     url: `${origin}/i/${no}/`,
     noindex: true,
-  }, { kind: 'invite' });
+  }, { kind: 'invite', body: homeBody() });
   page(`k/${no}`, {
     title: `わたしクイズ｜${SITE.quizName}`,
     description: `「${t.label}」の友達から、わたしクイズが届いています。友達の答えを当てて、理解度をチェックしよう。`,
     image: `${origin}/og/${no}.png`,
     url: `${origin}/k/${no}/`,
     noindex: true,
-  }, { kind: 'quiz' });
+  }, { kind: 'quiz', body: loadingBody('わたしクイズを読みこみ中…') });
   if (i < BASE_COUNT) urls.push(`${origin}/t/${no}/`);
 });
-page('p', { title: `ふたりの相性｜${SITE.quizName}`, description: 'ふたりの相性は何%？ あなたも診断して、友達との相性をくらべよう。', image: `${origin}/og/pair.png`, url: `${origin}/p/`, noindex: true }, { kind: 'pair' });
-page('g', { title: `グループ診断｜${SITE.quizName}`, description: 'みんなのポンコツタイプと、グループ内の役割が1ページにまとまります。', image: `${origin}/og/group.png`, url: `${origin}/g/`, noindex: true }, { kind: 'group' });
-page('thanks', { title: `ご購入ありがとうございます｜${SITE.quizName}`, description: topDescription, image: `${origin}/og/top.png`, url: `${origin}/thanks/`, noindex: true }, { kind: 'thanks' });
+page('p', { title: `ふたりの相性｜${SITE.quizName}`, description: 'ふたりの相性は何%？ あなたも診断して、友達との相性をくらべよう。', image: `${origin}/og/pair.png`, url: `${origin}/p/`, noindex: true }, { kind: 'pair', body: loadingBody('ふたりの相性を読みこみ中…') });
+page('g', { title: `グループ診断｜${SITE.quizName}`, description: 'みんなのポンコツタイプと、グループ内の役割が1ページにまとまります。', image: `${origin}/og/group.png`, url: `${origin}/g/`, noindex: true }, { kind: 'group', body: loadingBody('グループを読みこみ中…') });
+page('thanks', { title: `ご購入ありがとうございます｜${SITE.quizName}`, description: topDescription, image: `${origin}/og/top.png`, url: `${origin}/thanks/`, noindex: true }, { kind: 'thanks', body: loadingBody('お支払いを確かめています…') });
 
 fs.writeFileSync(
   path.join(dist, 'sitemap.xml'),
@@ -98,7 +100,7 @@ fs.writeFileSync(
 const hiddenPaths = TYPES.map((_, i) => i).filter((i) => i >= BASE_COUNT).map((i) => `Disallow: /t/${typeNo(i).toLowerCase()}/`);
 fs.writeFileSync(path.join(dist, 'robots.txt'), `User-agent: *\n${hiddenPaths.join('\n')}\nDisallow: /i/\nDisallow: /k/\nDisallow: /p/\nDisallow: /g/\nDisallow: /thanks/\nSitemap: ${origin}/sitemap.xml\n`);
 // Cloudflare Pages のヘッダ。
-//   ・JS/CSS はバージョンなしのESモジュールなので、毎回 ETag で新しいか確かめる（デプロイ直後に新旧が混ざらないように）
+//   ・JS/CSS は名前に中身のハッシュが入っているので、1年キャッシュしてよい
 //   ・/thanks/ は決済のIDがURLに入るので、ほかのサイトにURLを送らず、キャッシュもしない
 const CSP = [
   "default-src 'self'",
@@ -111,6 +113,40 @@ const CSP = [
   "base-uri 'self'",
   "form-action 'self'",
 ].join('; ');
+// ---------- JS と CSS を1つずつにまとめて小さくし、中身のハッシュを名前に入れる ----------
+// （ハッシュが変わればURLも変わるので、ブラウザに長くキャッシュさせても新旧が混ざらない）
+const assets = path.join(dist, 'assets');
+const hashOf = (text) => crypto.createHash('sha256').update(text).digest('hex').slice(0, 10);
+const bundled = await esbuild({
+  entryPoints: [path.join(assets, 'app.js')],
+  bundle: true,
+  minify: true,
+  format: 'esm',
+  target: ['es2020', 'safari14', 'chrome90'],
+  legalComments: 'none',
+  // 日本語を \uXXXX にしない（そのままのほうがずっと小さい）
+  charset: 'utf8',
+  write: false,
+});
+const appCode = bundled.outputFiles[0].text;
+const cssCode = (await transform(fs.readFileSync(path.join(assets, 'style.css'), 'utf8'), { loader: 'css', minify: true, charset: 'utf8' })).code;
+const appName = `app.${hashOf(appCode)}.js`;
+for (const f of fs.readdirSync(assets)) fs.rmSync(path.join(assets, f));
+fs.writeFileSync(path.join(assets, appName), appCode);
+(function rewrite(dir) {
+  for (const f of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, f.name);
+    if (f.isDirectory()) rewrite(full);
+    else if (f.name.endsWith('.html')) {
+      // CSS は小さい（gzip で数KB）ので、別ファイルにせず HTML に入れて、読みこみの往復を1回へらす
+      const html = fs.readFileSync(full, 'utf8')
+        .replaceAll('assets/app.js"', `assets/${appName}"`)
+        .replace(/<link rel="stylesheet" href="[./]*assets\/style\.css">/, () => `<style>${cssCode}</style>`);
+      fs.writeFileSync(full, html);
+    }
+  }
+})(dist);
+
 fs.writeFileSync(
   path.join(dist, '_headers'),
   [
@@ -119,7 +155,7 @@ fs.writeFileSync(
     '  X-Content-Type-Options: nosniff',
     '  Referrer-Policy: strict-origin-when-cross-origin',
     '/assets/*',
-    '  Cache-Control: no-cache',
+    '  Cache-Control: public, max-age=31536000, immutable',
     '/og/*',
     '  Cache-Control: public, max-age=86400',
     '/thanks/*',
@@ -136,4 +172,4 @@ if (!SITE.origin.includes('example.com') && placeholder) {
   process.exit(1);
 }
 if (placeholder) console.warn('注意: config.js の seller（特定商取引法の表記）が仮のままです。販売を始める前に埋めてください。');
-console.log(`built ${TYPES.length} type pages + invite/quiz/pair/group/thanks pages into dist/`);
+console.log(`built ${TYPES.length} type pages + types/invite/quiz/pair/group/thanks pages into dist/ (${appName} ${Math.round(Buffer.byteLength(appCode) / 1024)}KB, CSS ${Math.round(Buffer.byteLength(cssCode) / 1024)}KB inlined)`);

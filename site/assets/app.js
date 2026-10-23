@@ -1,4 +1,5 @@
 // 入口：ホーム・ルーティング。質問・結果・レポート・ふたり/グループ・完全版は別モジュール。
+import './fonts.js';
 import { SITE } from './config.js';
 import { TYPES, HIDDEN, QUESTIONS, PARAM_QUESTIONS, indexFromNo } from './data.js';
 import { decodeResult } from './logic.js';

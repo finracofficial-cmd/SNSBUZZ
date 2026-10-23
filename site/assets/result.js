@@ -105,15 +105,16 @@ export function shareCarousel(button, r, text) {
   });
 }
 
+const rarityTile = (rarity) =>
+  `<b>レア度</b><strong>${rarity.pct.toFixed(1)}%</strong><small>${rarity.source === 'actual' ? '診断した人の中で' : '計算上の値'}</small>`;
+
 // ---------- かんたん診断の結果 ----------
 export async function viewResult(r, shareId) {
   const gen = navNow();
   const t = TYPES[r.index];
   const title = titleOf(r.purity);
-  const stats = await loadStats();
-  // 読みこみを待っているあいだに別の画面へ移っていたら、描かない
-  if (gen !== navNow()) return;
-  const rarity = rarityOf(r.index, stats);
+  // レア度は集計を待たずに計算上の値で描き、集計が届いたら差しかえる（結果をすぐ見せるため）
+  let rarity = rarityOf(r.index, null);
   const ura = TYPES[r.ura.index];
   const text = shareText(r);
   const url = shareUrl(r.index, shareId);
@@ -144,7 +145,7 @@ export async function viewResult(r, shareId) {
     </section>
     <div class="tiles">
       <div class="tile"><b>ポンコツ純度</b><strong>${r.purity}%</strong><small>${esc(title)}</small></div>
-      <div class="tile"><b>レア度</b><strong>${rarity.pct.toFixed(1)}%</strong><small>${rarity.source === 'actual' ? '診断した人の中で' : '計算上の値'}</small></div>
+      <div class="tile" data-rarity>${rarityTile(rarity)}</div>
       <a class="tile" href="${typePath(r.ura.index)}"><b>裏タイプ</b><strong class="small">${esc(ura.label)}</strong><small>もうひとつの顔</small></a>
     </div>
     ${detailTeaser(r)}
@@ -168,6 +169,13 @@ export async function viewResult(r, shareId) {
     ${foot()}`, r.index);
 
   const ctx = { ...r, title, rarity };
+  loadStats().then((stats) => {
+    if (gen !== navNow() || !stats) return;
+    rarity = rarityOf(r.index, stats);
+    ctx.rarity = rarity;
+    const tile = app.querySelector('[data-rarity]');
+    if (tile) tile.innerHTML = rarityTile(rarity);
+  });
   app.querySelectorAll('[data-card]').forEach((b) =>
     b.addEventListener('click', () =>
       busy(b, async () => {

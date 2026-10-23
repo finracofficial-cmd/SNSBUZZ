@@ -13,6 +13,7 @@
     "cards": "node scripts/cards.mjs"
   },
   "devDependencies": {
+    "esbuild": "0.25.12",
     "playwright-core": "1.56.1"
   }
 }

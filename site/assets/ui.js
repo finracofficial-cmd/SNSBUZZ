@@ -109,12 +109,16 @@ export async function busy(button, fn) {
 export function setTheme(index) {
   const root = document.documentElement.style;
   if (index == null) {
-    ['--type', '--type-deep', '--type-soft'].forEach((k) => root.removeProperty(k));
+    ['--type', '--type-deep', '--type-btn', '--type-text', '--type-soft'].forEach((k) => root.removeProperty(k));
     return;
   }
   const c = TYPES[index].color;
   root.setProperty('--type', c);
   root.setProperty('--type-deep', shade(c, 0.32));
+  // ボタンの白文字が読めるよう、ボタンだけは少し濃くする（コントラスト3:1以上）
+  root.setProperty('--type-btn', shade(c, 0.42));
+  // 白い背景の上の色文字・チップ（コントラスト4.5:1以上）
+  root.setProperty('--type-text', shade(c, 0.5));
   root.setProperty('--type-soft', tint(c, 0.75));
 }
 

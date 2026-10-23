@@ -37,11 +37,11 @@ const approx = (n) => (n >= 100 ? Math.round(n / 10) * 10 : n);
 const mosaic = (index, seed, length, lines = null) => {
   const total = lines ? lines.reduce((a, b) => a + b, 0) : length;
   return `
-  <div class="mosaic" data-paywall role="button" tabindex="0" aria-label="完全版で読めます（約${approx(total)}字）">
+  <div class="mosaic" data-paywall role="button" tabindex="0">
     <div aria-hidden="true">${lines
       ? `<ul>${lines.map((n, k) => `<li>${dummy(index, seed + k, n)}</li>`).join('')}</ul>`
       : `<p>${dummy(index, seed, length)}</p>`}</div>
-    <span class="lock" aria-hidden="true">完全版で読めます<small>約${approx(total)}字</small></span>
+    <span class="lock">完全版で読めます<small>約${approx(total)}字</small></span>
   </div>`;
 };
 

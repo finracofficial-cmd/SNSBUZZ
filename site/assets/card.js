@@ -3,6 +3,7 @@ import { SITE } from './config.js';
 import { TYPES, AXES, LOVE_TYPES, isHidden, typeNo } from './data.js';
 import { charaDataURL, shade, tint } from './chara.js';
 import { statValues, statLabels } from './radar.js';
+import { fontCss } from './fonts.js';
 
 export const FONT = '"M PLUS Rounded 1c", "Hiragino Maru Gothic ProN", "Hiragino Sans", "Noto Sans JP", sans-serif';
 export const INK = '#3B2F33';
@@ -10,6 +11,7 @@ const NO_LINE_END = '「『（(“';
 const NO_LINE_START = '。、，．・ー」』）)！？!?〜…ぁぃぅぇぉっゃゅょァィゥェォッャュョ%％';
 
 export async function ensureFonts(text) {
+  await fontCss;
   if (!document.fonts) return;
   try {
     await Promise.all([

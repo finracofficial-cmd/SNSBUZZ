@@ -10,7 +10,7 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 const typeUrl = (i) => `/t/${typeNo(i).toLowerCase()}/`;
 const theme = (i) => {
   const c = TYPES[i].color;
-  return `--type:${c};--type-deep:${shade(c, 0.32)};--type-soft:${tint(c, 0.75)}`;
+  return `--type:${c};--type-deep:${shade(c, 0.32)};--type-btn:${shade(c, 0.42)};--type-text:${shade(c, 0.5)};--type-soft:${tint(c, 0.75)}`;
 };
 const list = (items, cls = 'aru') => `<ul class="${cls}">${items.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>`;
 const brand = () => `<div class="brand"><a href="/">${esc(SITE.name)}</a><a href="/types/">全タイプ一覧 →</a></div>`;
@@ -103,6 +103,15 @@ export function homeBody() {
       .map((t, i) => `<li><a href="${typeUrl(i)}">${esc(t.label)}</a></li>`)
       .join('')}</ul></section>
     ${foot()}
+  </div>`;
+}
+
+// 友達から届いたリンク（わたしクイズ・相性・グループ）と決済から戻るページ。JSが動くまでの仮の画面
+export function loadingBody(text) {
+  return `<div class="view prerendered">
+    ${brand()}
+    <div class="loading small">${esc(text)}<div class="dots"><i></i><i></i><i></i></div></div>
+    <a class="btn sub" href="/">トップへ</a>
   </div>`;
 }
 
