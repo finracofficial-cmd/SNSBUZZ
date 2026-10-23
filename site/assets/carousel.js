@@ -7,7 +7,7 @@ import { TYPES, AXES, LOVE_TYPES, isHidden, typeNo } from './data.js';
 import { rankOf, skillsOf } from './logic.js';
 import { charaDataURL, shade, tint } from './chara.js';
 import { statValues, statLabels } from './radar.js';
-import { FONT, INK, ensureFonts, loadImage, wrap, roundRect, fitFont, hostOf, newCanvas } from './card.js';
+import { FONT, INK, ensureFonts, loadImage, wrap, roundRect, fitFont, hostOf, newCanvas, searchBand } from './card.js';
 
 const W = 1080;
 const H = 1920;
@@ -318,9 +318,10 @@ async function last(r, t) {
   ctx.fillText('12問・約1分の無料診断', W / 2, 1305);
   ctx.font = `800 48px ${FONT}`;
   ctx.fillText('診断はプロフのリンクから', W / 2, 1400);
+  searchBand(ctx, W / 2, 1515, t.color);
   ctx.fillStyle = INK;
   ctx.font = `800 46px ${FONT}`;
-  ctx.fillText('結果をコメントで教えてね', W / 2, 1580);
+  ctx.fillText('結果をコメントで教えてね', W / 2, 1660);
   return canvas;
 }
 
@@ -331,7 +332,7 @@ export async function drawCarousel(r) {
   const loveText = r.params ? `${LOVE_TYPES[r.love].name}${LOVE_TYPES[r.love].catch}${LOVE_TYPES[r.love].lead}${LOVE_TYPES[LOVE_TYPES[r.love].best].name}` : `${t.loveAru.join('')}${t.love}`;
   const sk = skillsOf(r);
   await ensureFonts(
-    `${SITE.name}${SITE.hashtag}${t.label}${t.catch}${t.aru.join('')}${t.chara}${t.toriset.do.join('')}${t.toriset.dont.join('')}${TYPES[t.best].label}${t.bestWhy}${nickname}${loveText}${sk ? sk.skill.skill + sk.weak.weak : ''}${statLabels(r).join('')}${AXES.map((a) => a.neg + a.pos).join('')}わたしのポンコツ判明スワイプしてね全タイプあるあるわかる人いる？ステータス必殺技弱点成分純度恋愛では相性◎トリセツこうしてくれるとうれしいこれはやめてね保存友達送あなたは何？無料診断問約分プロフのリンクから結果をコメントで教えてね隠しNo.よい・わるいではありません高さの目安くわしい二つ名出るよ0123456789/%→♡♥×✓「」`,
+    `${SITE.name}${SITE.hashtag}${t.label}${t.catch}${t.aru.join('')}${t.chara}${t.toriset.do.join('')}${t.toriset.dont.join('')}${TYPES[t.best].label}${t.bestWhy}${nickname}${loveText}${sk ? sk.skill.skill + sk.weak.weak : ''}${statLabels(r).join('')}${AXES.map((a) => a.neg + a.pos).join('')}わたしのポンコツ判明スワイプしてね${SITE.quizName}全タイプあるあるわかる人いる？ステータス必殺技弱点成分純度恋愛では相性◎トリセツこうしてくれるとうれしいこれはやめてね保存友達送あなたは何？無料診断問約分プロフのリンクから結果をコメントで教えてね隠しNo.よい・わるいではありません高さの目安くわしい二つ名出るよ0123456789/%→♡♥×✓「」`,
   );
   const img = await loadImage(charaDataURL(r.index));
   return [await cover(r, t, img, nickname), aru(r, t), status(r, t), love(r, t), toriset(r, t), await last(r, t)];

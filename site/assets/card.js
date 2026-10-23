@@ -109,7 +109,7 @@ export async function drawStoryCard({ index, purity, title, rarity, gold = false
   canvas.width = W;
   canvas.height = H;
   const ctx = canvas.getContext('2d');
-  await ensureFonts(`${SITE.name}${t.label}${t.praise}${t.roast}${TYPES[t.best].label}${nickname}${loveName}診断結果はタイプ診断した人の純度出現率レア度計算上の値相性恋愛あなたは何？二つ名%0123456789.No`);
+  await ensureFonts(`${SITE.name}${SITE.quizName}${t.label}${t.praise}${t.roast}${TYPES[t.best].label}${nickname}${loveName}診断結果はタイプ診断した人の純度出現率レア度計算上の値相性恋愛あなたは何？二つ名%0123456789.No`);
 
   const bg = ctx.createLinearGradient(0, 0, 0, H);
   bg.addColorStop(0, tint(t.color, 0.72));
@@ -158,52 +158,59 @@ export async function drawStoryCard({ index, purity, title, rarity, gold = false
   ctx.textAlign = 'right';
   ctx.fillText(isHidden(index) ? `隠しタイプ ${typeNo(index)}` : `No.${typeNo(index)}`, W - 120, 160);
 
+  // 大事な文字は y=230〜1660 に収める（ストーリーの上はアカウント名、下は返信欄が重なるため）。
+  // 文の長さに合わせて上から順に積み、タイルとさそいはその下に置く
   ctx.textAlign = 'center';
   ctx.fillStyle = INK;
-  ctx.font = `500 46px ${FONT}`;
-  ctx.fillText('診断結果は…', W / 2, 250);
+  ctx.font = `500 44px ${FONT}`;
+  ctx.fillText('診断結果は…', W / 2, 262);
 
   const img = await loadImage(charaDataURL(index));
-  ctx.drawImage(img, W / 2 - 290, 270, 580, 580);
+  ctx.drawImage(img, W / 2 - 230, 282, 460, 460);
 
+  let y = 812;
   if (nickname) {
     // 二つ名（くわしい診断）。ラベルの上に一行
     ctx.fillStyle = shade(t.color, 0.35);
-    fitFont(ctx, nickname, 800, 54, 36, W - 220);
-    ctx.fillText(nickname, W / 2, 878);
+    fitFont(ctx, nickname, 800, 52, 36, W - 220);
+    ctx.fillText(nickname, W / 2, y);
+    y += 70;
+  } else {
+    y += 20;
   }
-  const labelSize = fitFont(ctx, t.label, 800, nickname ? 92 : 104, 60, W - 220);
+  const labelSize = fitFont(ctx, t.label, 800, nickname ? 92 : 100, 60, W - 220);
   ctx.fillStyle = INK;
-  ctx.fillText(t.label, W / 2, (nickname ? 940 : 920) + labelSize * 0.35);
+  ctx.fillText(t.label, W / 2, y + labelSize * 0.3);
+  y += labelSize * 0.3 + 46;
 
   // 称号のピル
   const chip = `${title}・純度${purity}%`;
-  ctx.font = `800 40px ${FONT}`;
-  const cw = ctx.measureText(chip).width + 72;
-  roundRect(ctx, W / 2 - cw / 2, 1000, cw, 70, 35);
+  ctx.font = `800 38px ${FONT}`;
+  const cw = ctx.measureText(chip).width + 68;
+  roundRect(ctx, W / 2 - cw / 2, y, cw, 64, 32);
   ctx.fillStyle = shade(t.color, 0.15);
   ctx.fill();
   ctx.fillStyle = '#fff';
-  ctx.fillText(chip, W / 2, 1049);
+  ctx.fillText(chip, W / 2, y + 45);
+  y += 64 + 70;
 
   // ほめ言葉
-  ctx.font = `500 46px ${FONT}`;
+  ctx.font = `500 44px ${FONT}`;
   ctx.fillStyle = INK;
-  let y = 1170;
   for (const line of wrap(ctx, t.praise, W - 240)) {
     ctx.fillText(line, W / 2, y);
-    y += 66;
+    y += 62;
   }
   // 痛いところを突く一行（蛍光ペン風）
-  y += 24;
-  ctx.font = `800 50px ${FONT}`;
+  y += 18;
+  ctx.font = `800 48px ${FONT}`;
   for (const line of wrap(ctx, t.roast, W - 220)) {
     const lw = ctx.measureText(line).width;
     ctx.fillStyle = 'rgba(255, 214, 77, .75)';
-    ctx.fillRect(W / 2 - lw / 2 - 10, y - 24, lw + 20, 30);
+    ctx.fillRect(W / 2 - lw / 2 - 10, y - 22, lw + 20, 28);
     ctx.fillStyle = INK;
     ctx.fillText(line, W / 2, y);
-    y += 72;
+    y += 68;
   }
 
   // 数字のタイル
@@ -213,36 +220,74 @@ export async function drawStoryCard({ index, purity, title, rarity, gold = false
     ['相性◎', TYPES[t.best].label, TYPES[t.best].chara],
   ];
   const tw = (W - 240 - 40) / 3;
-  const ty = 1520;
+  const ty = Math.max(y + 6, 1290);
   tiles.forEach(([head, value, sub], i) => {
     const x = 120 + i * (tw + 20);
-    roundRect(ctx, x, ty, tw, 190, 28);
+    roundRect(ctx, x, ty, tw, 176, 28);
     ctx.fillStyle = tint(t.color, 0.78);
     ctx.fill();
     ctx.fillStyle = shade(t.color, 0.45);
-    ctx.font = `800 32px ${FONT}`;
-    ctx.fillText(head, x + tw / 2, ty + 50);
+    ctx.font = `800 30px ${FONT}`;
+    ctx.fillText(head, x + tw / 2, ty + 46);
     ctx.fillStyle = INK;
     if (i === 2 || (i === 1 && loveName)) {
-      ctx.font = `800 34px ${FONT}`;
-      const lines = wrap(ctx, value, tw - 28).slice(0, 2);
-      lines.forEach((line, k) => ctx.fillText(line, x + tw / 2, ty + (lines.length === 1 ? 112 : 98) + k * 40));
+      // 1行に収まるなら縮めて1行。収まらないときだけ2行に折る（「誰とでも5／分で親友」のような切れ方を避ける）
+      const size = fitFont(ctx, value, 800, 32, 25, tw - 24);
+      if (ctx.measureText(value).width <= tw - 24) {
+        ctx.fillText(value, x + tw / 2, ty + 104 + size * 0.1);
+      } else {
+        ctx.font = `800 30px ${FONT}`;
+        const lines = wrap(ctx, value, tw - 28).slice(0, 2);
+        lines.forEach((line, k) => ctx.fillText(line, x + tw / 2, ty + 92 + k * 36));
+      }
     } else {
-      const vs = fitFont(ctx, value, 800, 64, 22, tw - 24);
-      ctx.fillText(value, x + tw / 2, ty + 110 + vs * 0.12);
+      const vs = fitFont(ctx, value, 800, 60, 22, tw - 24);
+      ctx.fillText(value, x + tw / 2, ty + 102 + vs * 0.12);
     }
-    ctx.font = `500 26px ${FONT}`;
+    ctx.font = `500 24px ${FONT}`;
     ctx.fillStyle = shade(t.color, 0.35);
-    ctx.fillText(sub, x + tw / 2, ty + 172);
+    ctx.fillText(sub, x + tw / 2, ty + 158);
   });
 
+  // 検索してもらうための帯（TikTok・ストーリーの画像にはリンクを貼れないことが多い）
+  const by = ty + 176 + 36;
+  searchBand(ctx, W / 2, by, t.color);
+  ctx.textAlign = 'center';
   ctx.fillStyle = INK;
   ctx.font = `800 40px ${FONT}`;
-  ctx.fillText('あなたは何タイプ？', W / 2, 1774);
-  ctx.font = `500 32px ${FONT}`;
+  ctx.fillText('あなたは何タイプ？', W / 2, by + 124);
+  ctx.font = `500 30px ${FONT}`;
   ctx.fillStyle = shade(t.color, 0.4);
-  ctx.fillText(`${hostOf(SITE.origin)}  #${SITE.hashtag}`, W / 2, 1822);
+  ctx.fillText(`${hostOf(SITE.origin)}  #${SITE.hashtag}`, W / 2, 1800);
   return canvas;
+}
+
+// 「🔍 愛されポンコツ診断」の帯。虫めがねは絵文字ではなく線で描く（端末によって絵文字の形が変わるため）
+export function searchBand(ctx, cx, y, color) {
+  const text = SITE.quizName;
+  ctx.font = `800 38px ${FONT}`;
+  const tw = ctx.measureText(text).width;
+  const w = tw + 130;
+  roundRect(ctx, cx - w / 2, y, w, 72, 36);
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fill();
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = shade(color, 0.3);
+  ctx.stroke();
+  const ix = cx - w / 2 + 44;
+  const iy = y + 34;
+  ctx.beginPath();
+  ctx.arc(ix, iy, 13, 0, Math.PI * 2);
+  ctx.lineWidth = 5;
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(ix + 9, iy + 9);
+  ctx.lineTo(ix + 20, iy + 20);
+  ctx.stroke();
+  ctx.fillStyle = INK;
+  ctx.textAlign = 'left';
+  ctx.fillText(text, ix + 34, y + 50);
+  ctx.textAlign = 'center';
 }
 
 // タイプ別OGP 1200×630（ビルド時にPNGへ書き出す）

@@ -8,11 +8,12 @@ import { titleOf, rarityOf, paramLevel, rankOf, LEVEL_NAMES, fullName, skillsOf 
 import { charaSVG, shade } from './chara.js';
 import { radarSVG, statValues, statLabels } from './radar.js';
 import { drawStoryCard, drawStatusCard, drawWallpaper, canvasToBlob } from './card.js';
-import { app, ORIGIN, esc, track, loadStats, render, toast, foot, brand, shareLinks, shareImageBlob, inAppHint, ICONS, navNow, busy } from './ui.js';
+import { app, ORIGIN, esc, track, loadStats, render, toast, foot, brand, shareLinks, shareImageBlob, inAppHint, ICONS, navNow, busy, copySilently, copyText } from './ui.js';
 import { openPaywall, fetchPremium, hasPremium, previewUnlocked, watchClaim, premiumStatus, maybeShowAfterPurchase, restorePurchase, hasGift, openGift, priceOf } from './premium.js';
 import { openInviteModal, openGroupCreate, invitePairBox, openQuizCreate } from './social.js';
 import { openProfileCard } from './profile.js';
 import { shareCarousel, shareUrl } from './result.js';
+import { textResult } from './textshare.js';
 import { variant, abTrack } from './ab.js';
 
 const typePath = (index) => `#/t/${typeNo(index).toLowerCase()}`;
@@ -195,6 +196,7 @@ export async function viewReport(r, shareId) {
       <button class="btn type" data-card="nick">二つ名カードを保存</button>
       <button class="btn sub" data-carousel>6枚まとめて保存（TikTok・インスタの投稿用）</button>
       ${shareLinks({ text, url, channelPrefix: '' }).html}
+      <button class="btn sub small wide" data-text>テキストでコピー（LINE・X用）</button>
       ${inAppHint()}
       <div class="btn-row">
         <button class="btn sub small" data-card="status">${prem ? '' : ICONS.lock}ステータスカード</button>
@@ -244,6 +246,10 @@ export async function viewReport(r, shareId) {
   });
   const carouselButton = app.querySelector('[data-carousel]');
   carouselButton.addEventListener('click', () => shareCarousel(carouselButton, r, `${text}\n${url}`));
+  app.querySelector('[data-text]').addEventListener('click', () => {
+    track('share', 'text');
+    copyText(textResult(r, url));
+  });
   app.querySelectorAll('[data-invite]').forEach((b) => b.addEventListener('click', () => openInviteModal(r)));
   app.querySelector('[data-quiz-create]').addEventListener('click', () => openQuizCreate(r));
   app.querySelector('[data-group]').addEventListener('click', openGroupCreate);
@@ -255,6 +261,7 @@ export async function viewReport(r, shareId) {
         openPaywall(r);
         return;
       }
+      const linkCopied = card === 'wallpaper' ? Promise.resolve(false) : copySilently(url);
       busy(b, async () => {
         toast('画像をつくっています…');
         const canvas = card === 'status'
@@ -263,7 +270,7 @@ export async function viewReport(r, shareId) {
             ? await drawWallpaper(r)
             : await drawStoryCard({ ...r, title, rarity, nickname: r.nickname.text, loveName: love.name, gold: !!prem });
         track('share', { status: 'status-image', wallpaper: 'wallpaper' }[card] || 'nick-image');
-        await shareImageBlob(await canvasToBlob(canvas), { name: `ponkotsu-${typeNo(r.index)}-${b.dataset.card}.png`, text: `${text}\n${url}`, alt: `${name}のシェア画像` });
+        await shareImageBlob(await canvasToBlob(canvas), { name: `ponkotsu-${typeNo(r.index)}-${b.dataset.card}.png`, text: `${text}\n${url}`, alt: `${name}のシェア画像`, linkCopied: await linkCopied });
       });
     }),
   );

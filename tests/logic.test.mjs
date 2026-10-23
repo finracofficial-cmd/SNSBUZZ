@@ -249,3 +249,17 @@ test('A/Bテスト：ブラウザとサーバーの定義が同じ。z検定の 
   assert.ok(p > 0.0005 && p < 0.003, `p=${p}`);
   assert.ok(site.twoProportion(30, 1000, 36, 1000) > 0.05);
 });
+
+test('テキストの結果：軸は寄っている側と5マスのバー。くわしい診断でもパラメータの数値は入れない', async () => {
+  const { textResult } = await import('../site/assets/textshare.js');
+  const quick = judge({ axis: [0, 3, 1, 2, 0, 1, 3, 2, 1, 0, 2, 3] });
+  const t1 = textResult(quick, 'https://example.com/t/04/?s=x');
+  const lines = t1.split('\n');
+  assert.equal(lines.filter((l) => /^[🟧⬜]{5} /u.test(l)).length, 4);
+  assert.ok(t1.endsWith('https://example.com/t/04/?s=x'));
+  const detail = judge({ axis: [3, 1, 2, 0, 2, 3, 1, 0, 3, 2, 0, 1], param: [3, 2, 3, 1, 2, 3, 3, 2, 0, 1, 1, 2, 0, 1, 2, 2, 3, 3, 2, 3, 3, 2, 3, 3] });
+  const t2 = textResult(detail, 'u');
+  assert.ok(t2.includes(detail.nickname.text));
+  assert.ok(!/\d+%/.test(t2.split('\n').slice(3).join('\n')), 'パラメータの％は入れない');
+  assert.match(t2, /恋愛積極[SABCD] /);
+});

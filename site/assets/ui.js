@@ -245,7 +245,20 @@ export async function shareImageSet(blobs, { name, text, alt }) {
 }
 
 // 画像を共有シートへ。だめなら長押し保存用に表示する
-export async function shareImageBlob(blob, { name, text, alt }) {
+// クリップボードに黙ってコピーする（トーストを出さない）。押した直後に呼ぶ（時間がたつと許可されない）
+export async function copySilently(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// ストーリーに貼る「リンク」スタンプの案内（結果のリンクは、画像をつくる前にコピーしておく）
+const LINK_STICKER = '<p class="hint">結果のリンクはコピー済み。ストーリーで「スタンプ」→「リンク」→ 貼りつけ、で見た人が診断に来られるよ（鍵アカでもOK）</p>';
+
+export async function shareImageBlob(blob, { name, text, alt, linkCopied = false }) {
   if (!blob) {
     toast('画像を作れませんでした。もう一度ためしてね');
     return;
@@ -254,6 +267,7 @@ export async function shareImageBlob(blob, { name, text, alt }) {
   if (navigator.canShare?.({ files: [file] })) {
     try {
       await navigator.share({ files: [file], text });
+      if (linkCopied) toast('リンクはコピー済み。ストーリーの「リンク」スタンプに貼りつけてね');
       return;
     } catch (e) {
       if (e.name === 'AbortError') return;
@@ -262,7 +276,7 @@ export async function shareImageBlob(blob, { name, text, alt }) {
   const objectUrl = URL.createObjectURL(blob);
   openModal(
     `<img src="${objectUrl}" alt="${esc(alt)}">
-     <p class="hint">画像を長押しして保存 → ストーリーや動画で投稿してね</p>${ADD_YOURS}${inAppHint()}
+     <p class="hint">画像を長押しして保存 → ストーリーや動画で投稿してね</p>${linkCopied ? LINK_STICKER : ''}${ADD_YOURS}${inAppHint()}
      <button class="btn sub" data-close>とじる</button>`,
     () => URL.revokeObjectURL(objectUrl),
   );

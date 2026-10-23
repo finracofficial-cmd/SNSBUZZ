@@ -8,7 +8,8 @@ import { charaSVG } from './chara.js';
 import { radarSVG } from './radar.js';
 import { drawStoryCard, drawLabelCard, canvasToBlob } from './card.js';
 import { drawCarousel } from './carousel.js';
-import { app, ORIGIN, esc, store, track, loadStats, render, toast, foot, brand, shareLinks, shareImageBlob, shareImageSet, openModal, inAppHint, navNow, busy } from './ui.js';
+import { textResult } from './textshare.js';
+import { app, ORIGIN, esc, store, track, loadStats, render, toast, foot, brand, shareLinks, shareImageBlob, shareImageSet, openModal, inAppHint, navNow, busy, copySilently, copyText } from './ui.js';
 import { invitePairBox, inviteBanner, openInviteModal, openGroupCreate, openQuizCreate, friends } from './social.js';
 import { openProfileCard } from './profile.js';
 
@@ -140,6 +141,7 @@ export async function viewResult(r, shareId) {
       <button class="btn type" data-card="story">画像を保存してストーリーに投稿</button>
       <button class="btn sub" data-carousel>6枚まとめて保存（TikTok・インスタの投稿用）</button>
       ${shareLinks({ text, url, channelPrefix: '' }).html}
+      <button class="btn sub small wide" data-text>テキストでコピー（LINE・X用）</button>
       ${inAppHint()}
       <div class="btn-row">
         <button class="btn sub small" data-card="label">成分表カード</button>
@@ -180,17 +182,23 @@ export async function viewResult(r, shareId) {
     if (tile) tile.innerHTML = rarityTile(rarity);
   });
   app.querySelectorAll('[data-card]').forEach((b) =>
-    b.addEventListener('click', () =>
+    b.addEventListener('click', () => {
+      // ストーリーのリンクスタンプ用に、押した直後に結果のリンクをコピーしておく
+      const linkCopied = copySilently(url);
       busy(b, async () => {
         toast('画像をつくっています…');
         const canvas = b.dataset.card === 'label' ? await drawLabelCard(ctx) : await drawStoryCard(ctx);
         track('share', b.dataset.card === 'label' ? 'label-image' : 'image');
-        await shareImageBlob(await canvasToBlob(canvas), { name: `ponkotsu-${typeNo(r.index)}-${b.dataset.card}.png`, text: `${text}\n${url}`, alt: `${t.label}のシェア画像` });
-      }),
-    ),
+        await shareImageBlob(await canvasToBlob(canvas), { name: `ponkotsu-${typeNo(r.index)}-${b.dataset.card}.png`, text: `${text}\n${url}`, alt: `${t.label}のシェア画像`, linkCopied: await linkCopied });
+      });
+    }),
   );
   const carouselButton = app.querySelector('[data-carousel]');
   carouselButton.addEventListener('click', () => shareCarousel(carouselButton, r, `${text}\n${url}`));
+  app.querySelector('[data-text]').addEventListener('click', () => {
+    track('share', 'text');
+    copyText(textResult(r, url));
+  });
   app.querySelectorAll('[data-invite]').forEach((b) => b.addEventListener('click', () => openInviteModal(r)));
   app.querySelector('[data-quiz-create]').addEventListener('click', () => openQuizCreate(r));
   app.querySelector('[data-group]').addEventListener('click', openGroupCreate);
