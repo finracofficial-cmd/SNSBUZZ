@@ -315,6 +315,8 @@
 | シール帳用のシール（L判） | 印刷して友達と交換。QR から診断に来ると、シールの持ち主との相性が出る（`ref:print` で数える） |
 | グループの結果テキスト | 役割・ベストペア・チームのタイプを、LINE にそのまま貼れる形で |
 | SNS運用素材 | `npm run cards` で、全タイプの紹介スライドと結果カードの見本を書き出す |
+| 紹介ループ（虹色カード） | シェアURL・おさそいリンクに端末のランダムな番号 `r` を入れる。そこから初めて診断した友達が3人になると、虹色の枠の結果カードを保存できる |
+| LINEスタンプ | `npm run stamps` で、全20タイプ×2つのセリフ（40個）の申請用画像を書き出す |
 
 ## 計測とKPI
 
@@ -337,6 +339,8 @@ Cloudflare D1 の `counters` に、回数だけを記録する。個人を識別
 v4で足したもの：`ref:f`（シェアURLから来た）、`share:carousel`・`share:text`・`share:wallpaper`、`agree:yes/no`（結果への共感）、`lp:q1`（トップの1問目から始めた）、`ab:<実験>:<案>:<段階>`（A/Bテスト）、`day:<日付>:paid`（日別の支払い完了）。
 
 v4.2で足したもの：`share:video`・`share:now-nick`・`share:carousel-feed`・`share:sticker`・`share:group-text`、`ref:print`（シールの QR から来た）、`visit:return`（結果を持っている端末が別の日にまた開いた。1日1回）、`poll`・`poll:<週>:all:<選択肢>`・`poll:<週>:t<タイプ>:<選択肢>`（今週のお題）、A/Bテスト `calc`。
+
+月100万円の施策で足したもの：`rev`・`rev:YYYY-MM`・`rev:YYYY-MM:<プラン>`・`day:<日付>:rev`・`ab:<実験>:<案>:rev`（売上・円）、`refund:YYYY-MM`・`day:<日付>:refund`（返金・円）、`paywall:pair`（ふたりの相性の画面からの購入案内）、`premium:cancel`（決済の画面で「戻る」）・`left:<理由>`（迷った理由）、A/Bテスト `price`（価格テスト。サーバーが週ごとに決める）、`ref:done`・`day:<日付>:refdone`（紹介で初めて診断した友達）、`share:rainbow-image`、`aff:<タイプ>`（アフィリエイトのクリック）、`out:<stamps|goods|line|biz>`（外のお店・法人の問い合わせ）。
 
 運営は `#/admin` に `KPI_TOKEN` を入れると、ファネル・日別・A/Bテスト（2つの割合の z 検定つき）・シェア・再訪・タイプ別を1画面で見られる。A/Bテストの判定は、各案の表示が5,000人に達するまで出さない（途中で何度も見て止めると、差がなくても「差あり」と出やすいため）。
 
@@ -365,6 +369,8 @@ v4.2で足したもの：`share:video`・`share:now-nick`・`share:carousel-feed
    - 公開の1〜2週間前から、あるあるカルーセルを流す。
    - 公開後も運用を止めない。
 6. **インフルエンサーに依頼するときは「PR」と表記する**（ステマ告示）。
+7. **広告・アフィリエイト・外のお店の設定**：AdSense の審査が通ったら `config.js` の `ads`、Amazon アソシエイトの `affiliate.amazonTag`、`links`（LINEスタンプ・グッズ・LINE公式アカウント・法人の問い合わせ先）を入れる。手順は `docs/revenue-plan.md` のチェックリスト。
+8. **毎年12月**：完全版の第7章「2027年の過ごし方ヒント」を翌年版に書きかえる。
 
 ## 文言のルール
 

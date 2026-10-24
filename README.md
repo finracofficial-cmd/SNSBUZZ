@@ -14,6 +14,7 @@ SNSでUGCとして拡散するWebコンテンツの調査と、その第1弾「�
 | `research_notes/` | 調査メモ。`v2_benchmarks/` は結果ページの作りとマネタイズ、`v3/` はチラ見せ・ペイウォール・2段階診断・友達クイズの調査 |
 | `docs/design.md` | 診断の設計（12問＋24問・20タイプ・パラメータ・二つ名・レポートの章立て・拡散の仕組み・KPI・公開前のTODO） |
 | `docs/monetization.md` | マネタイズ計画（無料と有料の分け方・完全版の購入の流れ・おうちの人の支払い・LINEスタンプ・B2B・広告・試算） |
+| `docs/revenue-plan.md` | 月100万円を安定して稼ぐための計画（売上の式・シナリオ・柱の分け方・設定のチェックリスト・毎週の運用・1年のカレンダー） |
 | `docs/competitor_check.md` | 日本の類似診断の競合チェック |
 | `content/` | タイプごとの文言（`types/NN.json`）、パラメータ（`params.json`）、恋愛タイプ（`love.json`）と執筆ガイド（`BRIEF.md`・`BRIEF_v3.md`） |
 | `site/` | サイト本体（静的HTML＋ESモジュール。ビルドしなくても動く） |
@@ -57,6 +58,8 @@ npm run validate   # content/ の文字数・NGワード（占い・予言の語
 npm run content    # site/assets/types.js（無料部分と有料の文字数）と functions/_lib/premium.js（有料部分）を生成
 npm run og         # OGP画像を site/og/ に書き出す（コミットする）
 npm run cards      # SNS投稿用の画像を cards/ に書き出す（タイプ紹介スライドと結果カードの見本）
+npm run stamps     # LINEスタンプの申請用の画像を stamps/ に書き出す（370×320・透明・40個＋メイン＋タブ）
+                   # cards と stamps は site/ のモジュールを使うので、先に npm run content を実行しておく
 npm run smoke      # スマホ幅で かんたん診断→くわしい診断→レポート（モザイク）→シェア画像→おさそい→相性→わたしクイズ→図鑑 を通しで操作。
                    # JSエラー・有料文の漏れ・購入案内の自動表示が1回までか・4つの画面幅での横はみ出しを確認
 ```
@@ -71,6 +74,8 @@ npm run smoke      # スマホ幅で かんたん診断→くわしい診断→�
    npx wrangler d1 create ponkotsu-zukan
    npx wrangler d1 execute ponkotsu-zukan --remote --file=schema.sql
    ```
+
+   紹介ループの `refs` の表を足しました。公開済みの D1 にも、もう一度 `schema.sql` を流してください（`CREATE TABLE IF NOT EXISTS` なので、ほかの表はそのまま）。
 
    v4.2 でテーブルの形が変わりました（`refunds` の追加、`members` に `handle` の列・`member_id` は本人の秘密のハッシュに、`groups` に `locked` の列、`rl` に索引）。公開前なので、手元の D1 は作り直してください（`rm -rf .wrangler/state` のあと上のコマンド）。
 
@@ -90,6 +95,8 @@ npm run smoke      # スマホ幅で かんたん診断→くわしい診断→�
    | `PREMIUM_PRICE` | 画面に出す、じぶん用の価格（既定 390）。Stripeの価格と同じにする | 任意 |
    | `STRIPE_PRICE_ID_DUO` | 590円（ふたり用・友達に1つプレゼント）の価格ID。設定したときだけ、ふたり用を出す | 任意 |
    | `PREMIUM_PRICE_DUO` | 画面に出す、ふたり用の価格（既定 590） | 任意 |
+   | `STRIPE_PRICE_ID_ALT` | 価格テストの価格ID（例 490円）。`PREMIUM_PRICE_ALT` と両方入れると、じぶん用の価格を日本時間の月曜0時ごとに、いつもの価格と交互にする | 任意 |
+   | `PREMIUM_PRICE_ALT` | 価格テストで画面に出す価格（例 490）。Stripeの価格と同じにする | 任意 |
    | `STRIPE_WEBHOOK_SECRET` | Stripe の Webhook の署名シークレット。ブラウザが戻らなかった購入の受け取りと、返金の反映に使う | 販売するなら必須 |
    | `STRIPE_PAYMENT_METHODS` | 支払い方法（既定 `card`。Apple Pay・Google Pay をふくむ）。PayPay を足すなら `card,paypay` | 任意 |
    | `PROMO_CODES` | 完全版を開けるコード（カンマ区切り。`CODE:2027-03-31` で期限つき。キャンペーン・タイアップ用） | 任意 |
@@ -131,7 +138,9 @@ npm run smoke      # スマホ幅で かんたん診断→くわしい診断→�
 | `GET/POST /api/poll` | 今週のお題の集計（30票に満たないものは出さない）／投票（今週のお題だけ） |
 | `GET /api/premium/status` | 販売中かどうかと、プラン・価格・支払い方法 |
 | `GET /api/premium` | 完全版の本文。購入トークン（ヘッダか Cookie）が必要。返金済み・終了したコードは 403 |
-| `POST /api/checkout` | Stripe の価格が画面の価格と同じか確かめてから、Checkout の支払いページを作る（セッションIDも返し、ブラウザは決済へ移る前に覚えておく） |
+| `GET /api/premium/pair` | ふたりの相性・完全版の本文（`?a=&b=&rank=`）。購入トークンが必要 |
+| `GET/POST /api/ref` | 紹介：自分のリンクから初めて診断した友達の人数／友達の端末から1回だけ数える（3人で虹色カード） |
+| `POST /api/checkout` | Stripe の価格が画面の価格と同じか確かめてから、Checkout の支払いページを作る（セッションIDも返し、ブラウザは決済へ移る前に覚えておく）。価格テストで週が切りかわって画面の価格とちがうときは 409 |
 | `GET /api/unlock` | 決済から戻ったブラウザに購入トークンを渡す（決済から24時間まで） |
 | `POST /api/stripe-webhook` | Stripe の通知。購入と、おうちの人の支払いの受け取りを記録し、返金で無効にする |
 | `GET /api/claim` | おうちの人の支払いが終わったら、子どもの端末（秘密の文字列を持つ端末だけ）にトークンを渡す |
@@ -153,11 +162,22 @@ npm run smoke      # スマホ幅で かんたん診断→くわしい診断→�
 
 ### 運営用の画面
 
-- `#/admin`：`KPI_TOKEN` を入れると、ファネル・日別・A/Bテスト・シェア・タイプ別のKPIが見られる（どこからもリンクしていない）。
+- `#/admin`：`KPI_TOKEN` を入れると、今月の売上と目標（月100万円）までのペース・月100万円までの試算・ファネル（決済をやめた理由をふくむ）・日別・A/Bテスト（価格テストは表示1回あたりの売上で判定）・シェア・タイプ別のKPIが見られる（どこからもリンクしていない）。
+
+### 広告・アフィリエイト・外のお店（`site/assets/config.js`）
+
+どれも空のあいだは何も出ません。
+
+| 設定 | 用途 |
+|---|---|
+| `ads.client`・`ads.slots` | Google AdSense（パーソナライズしない広告。完全版を買った端末には出さない）。入れるとビルドで `ads.txt` と CSP が足される |
+| `affiliate.amazonTag` | Amazon アソシエイトのトラッキングID。結果ページ・タイプページに「このタイプにおすすめ（PR）」を出す |
+| `links.stamps`・`links.goods`・`links.lineOfficial` | LINEスタンプ・グッズのお店・LINE公式アカウントへのリンク（結果ページ・図鑑の「もっと楽しむ」） |
+| `links.bizContact` | 法人の問い合わせ先（メールアドレスかフォームのURL）。`#/biz` のボタンになる |
 
 ## 公開前に人の手が必要なこと
 
-詳しくは `docs/design.md` と `docs/monetization.md` を見てください。
+詳しくは `docs/design.md`・`docs/monetization.md`・`docs/revenue-plan.md` を見てください。
 
 - キャラ20体を、人の手で描いたイラストに差し替える（いまのSVGは仮）
 - Stripe（またはKOMOJU）の業種審査を確認する（「占い」は禁止業種。完全版はエンタメの心理テストとして作っている）
