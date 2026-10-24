@@ -13,7 +13,8 @@ const ALLOWED = {
   // 流入：f＝相性のおさそいつきのシェアURL、print＝シールの QR
   ref: (v) => (['f', 'print'].includes(v) ? v : ''),
   detail: (v) => (['start', 'done'].includes(v) ? v : null),
-  paywall: (v) => (['view', 'cta', 'ask'].includes(v) ? v : null),
+  // 購入案内（view＝自動・cta＝ボタン・ask＝おうちの人に頼む・pair＝ふたりの相性の画面から）
+  paywall: (v) => (['view', 'cta', 'ask', 'pair'].includes(v) ? v : null),
   quiz: (v) => (['create', 'answer', 'done'].includes(v) ? v : null),
   group: (v) => (['create', 'join'].includes(v) ? v : null),
   // 結果への「わかる〜！」「ちょっとちがう」

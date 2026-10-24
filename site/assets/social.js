@@ -1,12 +1,15 @@
 // ふたり・グループで遊ぶ機能：相性のおさそいリンク、ペア結果、グループ診断、出会ったタイプの記録
 import { SITE } from './config.js';
-import { TYPES, AXES, QUESTIONS, typeNo } from './data.js';
+import { TYPES, AXES, QUESTIONS, PAIR_LEN, typeNo } from './data.js';
 import { compatOf, decodeResult, encodeResult, quickCodeOf, resultFromSums, axisPctOf, groupRoles } from './logic.js';
 import { charaSVG } from './chara.js';
 import { drawPairCard, canvasToBlob } from './card.js';
 import { optionsHtml } from './quiz.js';
 import { app, ORIGIN, esc, cleanName, store, track, api, render, toast, openModal, closeModal, foot, brand, shareLinks, shareImageBlob, navNow, busy, copyText, confirmModal, safeDecode, jp } from './ui.js';
 import { jstParts } from './clock.js';
+import { pickPair } from './pairpick.js';
+import { mosaic, approx } from './mosaic.js';
+import { hasPremium, previewUnlocked, fetchPair, openPaywall, premiumStatus, priceOf } from './premium.js';
 
 // ---------- 出会ったタイプ（図鑑のコンプリート用） ----------
 // 友達の結果は、かんたん診断の部分（タイプと4軸）だけを持つ。くわしい診断のパラメータ（恋愛積極度など）は、
@@ -163,9 +166,11 @@ export function viewPair(codeA, codeB, nameA, nameB) {
     <div class="card"><h2>ふたりの4つの軸</h2>${pairAxes(a, b, nameA, nameB)}</div>
     <div class="card"><h2>${esc(nameB)}のトリセツ（${esc(nameA)}へ）</h2><p>うれしいこと：${esc(tb.toriset.do[0])}</p><p>ちょっと苦手：${esc(tb.toriset.dont[0])}</p></div>
     <div class="card"><h2>${esc(nameA)}のトリセツ（${esc(nameB)}へ）</h2><p>うれしいこと：${esc(ta.toriset.do[0])}</p><p>ちょっと苦手：${esc(ta.toriset.dont[0])}</p></div>
+    <div id="pair-premium">${pairPremium({ a, b, nameA, nameB, c, data: null })}</div>
     <button class="btn" data-go="#/q">自分も診断する</button>
     <button class="btn sub" data-go="#/zukan">図鑑をみる</button>
     ${foot()}`, a.index);
+  bindPairPremium({ a, b, nameA, nameB, c });
   const pairButton = app.querySelector('[data-pair-card]');
   pairButton.onclick = () =>
     busy(pairButton, async () => {
@@ -174,6 +179,79 @@ export function viewPair(codeA, codeB, nameA, nameB) {
       track('share', 'pair-image');
       await shareImageBlob(await canvasToBlob(canvas), { name: 'ponkotsu-pair.png', text: `${text}\n${sendUrl}`, alt: 'ふたりの相性カード' });
     });
+}
+
+// ---------- ふたりの相性・完全版 ----------
+// 相性の％を見た直後が、いちばん「もっと知りたい」瞬間。軸ごとの見出し（どちらがどっち側か）は無料で見せ、
+// 中身（ふたりの関係・けんかの原因と仲直りのコツ・落とし穴・遊び方・ひとこと）は完全版で読めるようにする
+const baseOf = (r) => r.baseIndex ?? r.index;
+function axisTitle(k, st, posName, negName) {
+  const ax = AXES[k];
+  if (st === 'both1') return `${ax.pos}：ふたりとも${ax.pos}`;
+  if (st === 'both0') return `${ax.neg}：ふたりとも${ax.neg}`;
+  return `${ax.neg}と${ax.pos}：${negName}は${ax.neg}、${posName}は${ax.pos}`;
+}
+function pairPremium({ a, b, nameA, nameB, c, data }) {
+  const names = (pos) => (pos === 'a' ? [nameA, nameB] : [nameB, nameA]);
+  // 長い文はふつうに折り返す（文節だけで折ると右端ががたがたになる）。名前もふくめてエスケープする
+  const fill = (text, pos) => {
+    const [p, n] = names(pos || 'a');
+    return esc(String(text).replaceAll('{pos}', p).replaceAll('{neg}', n));
+  };
+  // 購入済みならサーバーが選んだ文、未購入なら同じ選び方で文字数だけ
+  const plan = data || pickPair(PAIR_LEN, baseOf(a), baseOf(b), c.rank);
+  const title = (x) => axisTitle(x.k, x.state, ...names(x.pos || 'a'));
+  if (data) {
+    return `<section class="card pair-premium"><h2>ふたりの相性・完全版</h2>
+      <h3>4つの軸で見るふたり</h3>${plan.axes.map((x) => `<div class="pp-item"><b class="jp">${jp(title(x))}</b><p>${fill(x.text, x.pos)}</p></div>`).join('')}
+      <h3>けんかになりやすい場面と、仲直りのコツ</h3>${plan.clash.length
+        ? plan.clash.map((x) => `<div class="pp-item"><b>${esc(AXES[x.k].neg)}と${esc(AXES[x.k].pos)}のちがい</b><p>${fill(x.scene, x.pos)}</p><p class="pp-fix"><span>仲直りのコツ</span>${fill(x.fix, x.pos)}</p></div>`).join('')
+        : '<p>4つの軸がぜんぶ同じ、似たもの同士のふたり。大きなけんかは起きにくいかわりに、下の落とし穴に気をつけて。</p>'}
+      ${plan.traps.length ? `<h3>似たもの同士の落とし穴</h3>${plan.traps.map((x) => `<div class="pp-item"><b class="jp">${jp(axisTitle(x.k, a.sums[x.k] > 0 ? 'both1' : 'both0'))}</b><p>${fill(x.text)}</p></div>`).join('')}` : ''}
+      <h3>ふたりの最強の遊び方</h3><ul class="pp-play">${plan.play.map((x) => `<li>${fill(x.text, x.pos)}</li>`).join('')}</ul>
+      <h3>ふたりへのひとこと</h3><p class="pp-message">${esc(plan.message)}</p>
+    </section>`;
+  }
+  // 未購入：見出しは見せて、中身はモザイク（文字数は本物とそろえる）
+  const sum = (list, f) => list.reduce((s, x) => s + f(x), 0);
+  return `<section class="card pair-premium locked"><h2>ふたりの相性・完全版</h2>
+    <p class="hint">完全版を買うと、この相性のくわしい中身が読めます。友達でも好きな人でも、何人とでも。</p>
+    <h3>4つの軸で見るふたり</h3>${plan.axes.map((x, k) => `<div class="pp-item"><b class="jp">${jp(title(x))}</b>${mosaic(a.index, 60 + k, x.text)}</div>`).join('')}
+    <h3>けんかになりやすい場面と、仲直りのコツ${plan.clash.length ? `（${plan.clash.length}つ）` : ''}</h3>${mosaic(a.index, 70, 0, plan.clash.length ? plan.clash.flatMap((x) => [x.scene, x.fix]) : [40])}
+    ${plan.traps.length ? `<h3>似たもの同士の落とし穴（${plan.traps.length}つ）</h3>${mosaic(a.index, 80, 0, plan.traps.map((x) => x.text))}` : ''}
+    <h3>ふたりの最強の遊び方</h3>${mosaic(a.index, 90, 0, plan.play.map((x) => x.text))}
+    <h3>ふたりへのひとこと</h3>${mosaic(a.index, 95, plan.message)}
+    <p class="hint center">のこり約${approx(sum(plan.axes, (x) => x.text) + sum(plan.clash, (x) => x.scene + x.fix) + sum(plan.traps, (x) => x.text) + sum(plan.play, (x) => x.text) + plan.message)}字</p>
+    <button class="btn gold" data-pair-buy>ふたりの相性・完全版を読む</button>
+  </section>`;
+}
+
+async function bindPairPremium(ctx) {
+  const box = app.querySelector('#pair-premium');
+  if (!box) return;
+  const gen = navNow();
+  const mine = store.get('mine', null);
+  const forPaywall = (mine && decodeResult(mine.code)) || ctx.a;
+  const buy = () => {
+    track('paywall', 'pair');
+    openPaywall(forPaywall);
+  };
+  const bindLocked = () => {
+    box.querySelectorAll('[data-paywall], [data-pair-buy]').forEach((el) => el.addEventListener('click', buy));
+    // 価格をボタンに出す（販売の状態はサーバーの値）
+    premiumStatus().then((s) => {
+      const btn = box.querySelector('[data-pair-buy]');
+      if (btn && gen === navNow() && s.enabled) btn.textContent = `ふたりの相性・完全版を読む（完全版 ${priceOf(s)}円）`;
+    });
+  };
+  if (!hasPremium() && !previewUnlocked()) {
+    bindLocked();
+    return;
+  }
+  const data = await fetchPair(baseOf(ctx.a), baseOf(ctx.b), ctx.c.rank);
+  if (gen !== navNow()) return;
+  if (data && !data.error) box.innerHTML = pairPremium({ ...ctx, data });
+  else bindLocked();
 }
 
 function pairAxes(a, b, nameA, nameB) {

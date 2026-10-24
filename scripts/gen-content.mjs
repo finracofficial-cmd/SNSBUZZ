@@ -72,16 +72,24 @@ for (let i = 0; i < 8; i++) {
   loveDetail.push({ detail: l.detail || '', tips: l.tips || [], bestWhy: l.bestWhy || '' });
 }
 
+// ふたりの相性・完全版（content/pair.json）。本文は有料（premium.js だけ）。無料のファイルには文字数だけを入れる
+const pairPath = path.resolve('content/pair.json');
+const pair = fs.existsSync(pairPath) ? JSON.parse(fs.readFileSync(pairPath, 'utf8')) : null;
+const lens = (o) => Object.fromEntries(Object.entries(o).filter(([k]) => k !== 'axis').map(([k, v]) => [k, len(v)]));
+const pairLen = pair
+  ? { axes: pair.axes.map(lens), clash: pair.clash.map(lens), play: pair.play.map(lens), message: lens(pair.message) }
+  : null;
+
 const header = '// このファイルは scripts/gen-content.mjs が content/ から生成する。直接編集しない。\n';
 const js = (name, value) => `export const ${name} = ${JSON.stringify(value, null, 2)};\n`;
 fs.writeFileSync(
   path.resolve('site/assets/types.js'),
-  header + js('TYPES', types) + js('PARAM_TEXT', paramText) + js('LOVE_TYPES', loveFree),
+  header + js('TYPES', types) + js('PARAM_TEXT', paramText) + js('LOVE_TYPES', loveFree) + js('PAIR_LEN', pairLen),
 );
 fs.mkdirSync(path.resolve('functions/_lib'), { recursive: true });
 fs.writeFileSync(
   path.resolve('functions/_lib/premium.js'),
-  header + js('PREMIUM', premiumTypes) + js('PARAM_DETAIL', paramDetail) + js('LOVE_DETAIL', loveDetail),
+  header + js('PREMIUM', premiumTypes) + js('PARAM_DETAIL', paramDetail) + js('LOVE_DETAIL', loveDetail) + js('PAIR', pair),
 );
 const blankLeads = paramText.flat().filter((x) => !x.lead).length;
 console.log(

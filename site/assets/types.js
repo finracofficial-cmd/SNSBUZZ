@@ -1845,3 +1845,82 @@ export const LOVE_TYPES = [
     }
   }
 ];
+export const PAIR_LEN = {
+  "axes": [
+    {
+      "both1": 127,
+      "both0": 126,
+      "diff": 128
+    },
+    {
+      "both1": 131,
+      "both0": 124,
+      "diff": 144
+    },
+    {
+      "both1": 129,
+      "both0": 133,
+      "diff": 137
+    },
+    {
+      "both1": 133,
+      "both0": 135,
+      "diff": 145
+    }
+  ],
+  "clash": [
+    {
+      "scene": 104,
+      "fix": 99,
+      "trap1": 102,
+      "trap0": 90
+    },
+    {
+      "scene": 105,
+      "fix": 102,
+      "trap1": 99,
+      "trap0": 102
+    },
+    {
+      "scene": 109,
+      "fix": 100,
+      "trap1": 89,
+      "trap0": 98
+    },
+    {
+      "scene": 99,
+      "fix": 100,
+      "trap1": 88,
+      "trap0": 108
+    }
+  ],
+  "play": [
+    {
+      "both1": 55,
+      "both0": 47,
+      "diff": 64
+    },
+    {
+      "both1": 53,
+      "both0": 49,
+      "diff": 69
+    },
+    {
+      "both1": 63,
+      "both0": 50,
+      "diff": 62
+    },
+    {
+      "both1": 58,
+      "both0": 57,
+      "diff": 68
+    }
+  ],
+  "message": {
+    "分身": 119,
+    "最強の相方": 116,
+    "名コンビ": 120,
+    "いい感じ": 119,
+    "刺激しあう仲": 117
+  }
+};

@@ -11,6 +11,7 @@ import { TYPES } from './data.js';
 import { ORIGIN, esc, store, api, toast, openModal, closeModal, track, copyText, inAppBrowser, navNow } from './ui.js';
 import { abTrack, abTag, abCode, abTagOfCode } from './ab.js';
 import { quizActive } from './quiz.js';
+import { pickPair } from './pairpick.js';
 
 const METHOD_NAMES = { card: 'クレジットカード（Apple Pay・Google Pay をふくむ）', paypay: 'PayPay' };
 const FALLBACK = { enabled: false, plans: [{ id: 'solo', price: SITE.premiumPrice, name: 'じぶん用', available: false }], methods: ['card'] };
@@ -81,6 +82,16 @@ export async function fetchPremium(r) {
   return data && !data.error ? data : { error: data?.error || 'network' };
 }
 
+// ふたりの相性・完全版（a・b はふだんの軸のタイプ番号 0〜15）。返り値は fetchPremium と同じ（中身／null／{error}）
+export async function fetchPair(a, b, rank) {
+  if (previewUnlocked()) return preview().pair ? pickPair(preview().pair, a, b, rank) : null;
+  const t = token();
+  if (!t) return null;
+  const data = await api(`premium/pair?a=${a}&b=${b}&rank=${encodeURIComponent(rank)}`, { token: t, timeout: 6000 });
+  if (data?.status === 403) return null;
+  return data && !data.error ? data : { error: data?.error || 'network' };
+}
+
 // ブラウザのデータが消えていたら、Cookie に残っている購入情報から戻す（1ページにつき1回だけ確かめる）
 let restoreTried = false;
 export async function restorePurchase() {
@@ -109,6 +120,7 @@ export async function adoptToken(t = token(), force = false) {
 const INCLUDES = [
   'パラメータ6項目の数値と、くわしい解説（第1章の見本の続きも）',
   '恋愛タイプの深掘り・恋のアドバイス3つ・相性のいい恋愛タイプの理由',
+  'ふたりの相性・完全版（4つの軸で見るふたり・けんかの原因と仲直りのコツ・最強の遊び方）。友達でも好きな人でも、何人とでも',
   '本当のあなた（ポンコツの裏にある本音と強み）',
   'ポンコツを武器にする3つの方法',
   '恋愛の落とし穴と攻略法',

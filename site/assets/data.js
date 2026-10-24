@@ -4,7 +4,7 @@
 // タイプ番号 = E*8 + S*4 + P*2 + M（各軸で pos 側なら 1）。16〜19 は隠しタイプ。
 // タイプはかんたん診断（1軸3問・計12問）で決まる。選択肢の点数は ±1 / ±3 なので、
 // 軸の合計は必ず奇数になり引き分けが起きない。くわしい診断はパラメータ24問を足す。
-export { TYPES, PARAM_TEXT, LOVE_TYPES } from './types.js';
+export { TYPES, PARAM_TEXT, LOVE_TYPES, PAIR_LEN } from './types.js';
 
 export const AXES = [
   { key: 'E', neg: '省エネ', pos: '全力' },

@@ -7,7 +7,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { chromium } from 'playwright-core';
-import { PREMIUM, PARAM_DETAIL, LOVE_DETAIL } from '../functions/_lib/premium.js';
+import { PREMIUM, PARAM_DETAIL, LOVE_DETAIL, PAIR } from '../functions/_lib/premium.js';
 
 const dist = path.resolve('dist');
 const outDir = path.resolve(process.argv[2] || 'smoke-shots');
@@ -93,6 +93,10 @@ const premiumSnippets = [
   // パラメータの解説は、二つ名の1項目だけ前半が見本として無料。後半で確かめる
   ...PARAM_DETAIL.flat().map((s) => s.slice(-24, -4)),
   ...LOVE_DETAIL.map((l) => l.detail.slice(8, 30)),
+  // ふたりの相性・完全版
+  ...PAIR.axes.flatMap((x) => [x.both1, x.both0, x.diff]).map((s) => s.replace(/\{(pos|neg)\}/g, '').slice(4, 24)),
+  ...PAIR.clash.flatMap((x) => [x.scene, x.fix, x.trap1, x.trap0]).map((s) => s.replace(/\{(pos|neg)\}/g, '').slice(4, 24)),
+  ...Object.values(PAIR.message).map((s) => s.slice(4, 24)),
 ];
 
 // ---------- 1人目 ----------
@@ -261,6 +265,18 @@ await b.waitForSelector('.pairbox');
 await b.click('.pairbox a');
 await b.waitForSelector('.pair-score');
 await shot(b, '11-pair');
+// ふたりの相性・完全版：軸の見出しは無料、中身はモザイク。有料の文はページに入っていない。ボタンで購入案内
+check((await b.locator('.pair-premium.locked .pp-item').count()) === 4, 'ふたりの相性・完全版の見出しが4つない');
+check((await b.locator('.pair-premium.locked .mosaic').count()) >= 6, 'ふたりの相性・完全版のモザイクが少ない');
+{
+  const pairHtml = await b.content();
+  const leakedPair = premiumSnippets.filter((s) => s && pairHtml.includes(s));
+  check(leakedPair.length === 0, `相性の有料文がページに入っている: ${leakedPair.slice(0, 2).join(' / ')}`);
+}
+await b.click('[data-pair-buy]');
+check(!!(await b.waitForSelector('.modal:not([hidden]) .includes', { timeout: 3000 }).catch(() => null)), 'ふたりの相性から購入案内が開かない');
+await shot(b, '11b-pair-paywall', false);
+await b.keyboard.press('Escape');
 await b.click('[data-pair-card]');
 await saveModalImage(b, '12-pair-card');
 

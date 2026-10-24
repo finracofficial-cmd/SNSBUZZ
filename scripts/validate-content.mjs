@@ -142,6 +142,38 @@ export function checkLove(list) {
   return errors;
 }
 
+// ふたりの相性・完全版（content/pair.json）。{pos} は軸の1側（全力・人たらし・ノリ派・秒で忘れる）の人、{neg} は0側の人
+export const PAIR_RANKS = ['分身', '最強の相方', '名コンビ', 'いい感じ', '刺激しあう仲'];
+export function checkPair(p) {
+  const errors = [];
+  const both = (t) => t.includes('{pos}') && t.includes('{neg}');
+  const none = (t) => !/[{}]/.test(t);
+  const spec = {
+    axes: [['both1', 100, 150, none], ['both0', 100, 150, none], ['diff', 100, 150, both]],
+    clash: [['scene', 70, 120, both], ['fix', 70, 120, both], ['trap1', 60, 110, none], ['trap0', 60, 110, none]],
+    play: [['both1', 40, 80, none], ['both0', 40, 80, none], ['diff', 40, 80, (t) => !/[{}]/.test(t.replace(/\{pos\}|\{neg\}/g, ''))]],
+  };
+  for (const [key, fields] of Object.entries(spec)) {
+    if (!Array.isArray(p?.[key]) || p[key].length !== 4) {
+      errors.push(`${key} は4つ（軸0〜3）必要`);
+      continue;
+    }
+    p[key].forEach((item, k) => {
+      if (item.axis !== k) errors.push(`${key}[${k}].axis がずれている`);
+      fields.forEach(([f, min, max, ok]) => {
+        const t = item[f];
+        if (typeof t !== 'string' || len(t) < min || len(t) > max) errors.push(`${key}[${k}].${f}: ${len(t || '')}字（${min}〜${max}字）`);
+        else if (!ok(t)) errors.push(`${key}[${k}].${f}: {pos}・{neg} の入れ方がちがう`);
+      });
+    });
+  }
+  PAIR_RANKS.forEach((r) => {
+    const t = p?.message?.[r];
+    if (typeof t !== 'string' || len(t) < 80 || len(t) > 130) errors.push(`message.${r}: ${len(t || '')}字（80〜130字）`);
+  });
+  return errors;
+}
+
 function checkWords(obj, where) {
   const errors = [];
   const all = JSON.stringify(obj);
@@ -171,6 +203,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     const extra = [
       ['params.json', (o) => [...checkParams(o), ...checkWords(o, 'params')]],
       ['love.json', (o) => [...checkLove(o), ...checkWords(o, 'love')]],
+      ['pair.json', (o) => [...checkPair(o), ...checkWords(o, 'pair')]],
     ];
     for (const [f, fn] of extra) {
       const file = path.resolve('content', f);

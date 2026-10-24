@@ -530,3 +530,36 @@ test('今週のお題：今週にだけ投票でき、30票に満たない集計
   // 他のサイトからの投票は弾く
   assert.equal((await pollPost({ request: post('/api/poll', { week, choice: 0 }, { origin: 'https://evil.example' }), env })).status, 403);
 });
+
+test('ふたりの相性・完全版：購入トークンがあるときだけ、ふたりの軸の状態に合った文を返す', async () => {
+  const { onRequestGet: pairGet } = await import('../functions/api/premium/pair.js');
+  const { PAIR } = await import('../functions/_lib/premium.js');
+  const { PAIR_LEN } = await import('../site/assets/types.js');
+  const site = await import('../site/assets/pairpick.js');
+  const server = await import('../functions/_lib/pairpick.js');
+  const env = { ...SECRET, PROMO_CODES: 'PAIRTEST' };
+  const token = await issueToken(env, 'promo-PAIRTEST');
+  const get = (q, t) => pairGet({ request: req(`/api/premium/pair?${q}`, t ? bearer(t) : {}), env });
+  assert.equal((await get('a=3&b=12&rank=名コンビ')).status, 401, 'トークンなしでは読めない');
+  assert.equal((await get('a=3&b=16&rank=名コンビ', token)).status, 400, 'タイプは0〜15');
+  assert.equal((await get('a=3&b=12&rank=運命', token)).status, 400, 'ランクは決まった5つ');
+  const res = await get('a=3&b=12&rank=名コンビ', token);
+  assert.equal(res.status, 200);
+  const data = await res.json();
+  // 3＝0011、12＝1100 → 4軸ともちがう
+  assert.deepEqual(data.axes.map((x) => x.state), ['diff', 'diff', 'diff', 'diff']);
+  assert.deepEqual(data.axes.map((x) => x.pos), ['b', 'b', 'a', 'a'], '1側がどちらか');
+  assert.equal(data.clash.length, 4);
+  assert.equal(data.traps.length, 0);
+  assert.ok(data.axes.every((x) => x.text.includes('{pos}') && x.text.includes('{neg}')));
+  assert.equal(data.message, PAIR.message['名コンビ']);
+  // 同じタイプ同士：落とし穴が4つ、けんかの場面はなし
+  const same = await (await get('a=6&b=6&rank=分身', token)).json();
+  assert.equal(same.clash.length, 0);
+  assert.equal(same.traps.length, 4);
+  // ブラウザとサーバーで選び方が同じ。無料のファイルには文字数だけが入る
+  for (let a = 0; a < 16; a++) for (let b = 0; b < 16; b++) assert.deepEqual(site.pickPair(PAIR, a, b, 'いい感じ'), server.pickPair(PAIR, a, b, 'いい感じ'));
+  const free = fs.readFileSync('site/assets/types.js', 'utf8');
+  assert.ok(!free.includes(PAIR.axes[0].diff.slice(0, 20)), '有料の文が無料のファイルに入っていない');
+  assert.equal(PAIR_LEN.axes[0].diff, Array.from(PAIR.axes[0].diff).length);
+});

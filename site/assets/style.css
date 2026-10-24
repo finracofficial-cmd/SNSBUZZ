@@ -584,3 +584,13 @@ table.kpi.money td:last-child { overflow-wrap: anywhere; }
 .pick-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .pick-list a { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 14px; background: var(--bg); color: var(--ink); text-decoration: none; font-weight: 700; font-size: 15px; }
 .pick-list a span { flex: 0 0 auto; font-size: 12px; color: var(--type-text); }
+
+/* ふたりの相性・完全版 */
+.pair-premium h3 { margin: 18px 0 8px; font-size: 16px; }
+.pp-item { margin: 0 0 12px; }
+.pp-item > b { display: block; font-size: 14px; color: var(--type-text); margin-bottom: 4px; }
+.pp-item p { margin: 0 0 6px; line-height: 1.7; }
+.pp-fix { background: var(--bg); border-radius: 12px; padding: 10px 12px; }
+.pp-fix span { display: block; font-size: 12px; font-weight: 800; color: #B83B6E; }
+.pp-play { margin: 0; padding-left: 1.2em; line-height: 1.7; }
+.pp-message { font-weight: 700; line-height: 1.8; }
