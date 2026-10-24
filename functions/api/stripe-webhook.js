@@ -7,7 +7,7 @@
 //   checkout.session.completed / checkout.session.async_payment_succeeded / charge.refunded
 //   charge.dispute.created / charge.dispute.updated / charge.dispute.closed
 import { json, sameText } from '../_lib/http.js';
-import { isOurSession, recordPurchase } from '../_lib/purchase.js';
+import { isOurSession, recordPurchase, jstDay } from '../_lib/purchase.js';
 
 const TOLERANCE = 5 * 60;
 const enc = new TextEncoder();
@@ -29,6 +29,22 @@ async function verify(payload, header, secret) {
   const mac = await crypto.subtle.sign('HMAC', key, enc.encode(`${t}.${payload}`));
   const expected = [...new Uint8Array(mac)].map((b) => b.toString(16).padStart(2, '0')).join('');
   return sigs.some((s) => sameText(s, expected));
+}
+
+// 返金した金額を、返金した月の売上から引けるように数える。charge.refunded の amount_refunded は累計なので、
+// 前に数えた分との差だけを足す（一部返金が2回あっても二重に数えない）
+async function recordRefundAmount(env, pi, total) {
+  if (!Number.isFinite(total) || total <= 0) return;
+  const seen = await env.DB.prepare('SELECT n FROM counters WHERE k = ?1').bind(`refunded:${pi}`).first();
+  const delta = total - (seen?.n || 0);
+  if (delta <= 0) return;
+  const add = env.DB.prepare('INSERT INTO counters (k, n) VALUES (?1, ?2) ON CONFLICT(k) DO UPDATE SET n = n + ?2');
+  const day = jstDay();
+  await env.DB.batch([
+    env.DB.prepare('INSERT INTO counters (k, n) VALUES (?1, ?2) ON CONFLICT(k) DO UPDATE SET n = ?2').bind(`refunded:${pi}`, total),
+    add.bind(`refund:${day.slice(0, 7)}`, delta),
+    add.bind(`day:${day}:refund`, delta),
+  ]);
 }
 
 // 返金は申し立てより優先する（返金のあとで申し立てに勝っても、読めるようには戻さない）
@@ -56,6 +72,7 @@ export async function onRequestPost({ request, env }) {
   if (event.type === 'checkout.session.completed' || event.type === 'checkout.session.async_payment_succeeded') {
     if (isOurSession(obj) && obj.payment_status === 'paid') await recordPurchase(env, obj);
   } else if (event.type === 'charge.refunded' && obj?.payment_intent) {
+    await recordRefundAmount(env, String(obj.payment_intent), Number(obj.amount_refunded));
     if (obj.refunded === true || Number(obj.amount_refunded) >= Number(obj.amount)) await revoke(env, String(obj.payment_intent), 'refund');
   } else if ((event.type === 'charge.dispute.created' || event.type === 'charge.dispute.updated') && obj?.payment_intent) {
     if (!String(obj.status || '').startsWith('warning_')) await revoke(env, String(obj.payment_intent), 'dispute');

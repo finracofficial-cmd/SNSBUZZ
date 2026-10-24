@@ -67,7 +67,9 @@ function stubStripe(sessions, prices = { price_solo: 390, price_duo: 590 }) {
   return { sent, restore: () => (globalThis.fetch = realFetch) };
 }
 const now = () => Math.floor(Date.now() / 1000);
-const paid = (plan, extra = {}) => ({ payment_status: 'paid', created: now(), metadata: { app: 'ponkotsu', plan }, payment_intent: `pi_${plan}_${Math.random().toString(36).slice(2, 8)}`, ...extra });
+const paid = (plan, extra = {}) => ({ payment_status: 'paid', created: now(), amount_total: plan === 'duo' ? 590 : 390, metadata: { app: 'ponkotsu', plan }, payment_intent: `pi_${plan}_${Math.random().toString(36).slice(2, 8)}`, ...extra });
+const month = () => new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 7);
+const counter = (DB, k) => DB.raw.prepare('SELECT n FROM counters WHERE k = ?1').get(k)?.n ?? 0;
 
 test('購入トークン：正しい署名だけ通り、IDを返す', async () => {
   const token = await issueToken(SECRET, 'cs_test_abc');
@@ -199,6 +201,10 @@ test('支払いの受け取り：記録は1回だけ数え、ほかの商品・�
     assert.equal(count.n, 1, '支払い完了は1回だけ数える');
     assert.equal(DB.raw.prepare("SELECT n FROM counters WHERE k = 'ab:paybar:specific:paid'").get().n, 1, 'A/Bの案ごとの支払い完了');
     assert.equal(DB.raw.prepare("SELECT COUNT(*) AS n FROM counters WHERE k LIKE 'day:%:paid'").get().n, 1, '日別の支払い完了');
+    // 売上（円）も1回だけ足す。月・プラン・A/Bの案ごと
+    assert.equal(counter(DB, `rev:${month()}`), 390);
+    assert.equal(counter(DB, `rev:${month()}:solo`), 390);
+    assert.equal(counter(DB, 'ab:paybar:specific:rev'), 390);
     assert.equal((await unlock('cs_test_other0000000')).status, 404);
     assert.equal((await unlock('cs_test_unpaid000000')).status, 402);
     assert.equal((await unlock('cs_test_old000000000')).status, 410);
@@ -258,11 +264,15 @@ test('Webhook：署名を確かめて購入と受け取りを記録し、返金�
   // ほかの商品の通知は記録しない
   await send({ type: 'checkout.session.completed', data: { object: { id: 'cs_test_other', payment_status: 'paid', metadata: { plan: 'solo' } } } });
   assert.equal(DB.raw.prepare("SELECT COUNT(*) AS n FROM purchases WHERE id = 'cs_test_other'").get().n, 0);
-  // 一部返金では止めない。全額返金で止める
+  // 一部返金では止めない。全額返金で止める（返金した金額は、差の分だけ返金の月に数える）
   assert.equal((await send({ type: 'charge.refunded', data: { object: { payment_intent: 'pi_parent', refunded: false, amount: 390, amount_refunded: 10 } } })).status, 200);
+  assert.equal(counter(DB, `refund:${month()}`), 10);
   assert.equal((await premiumGet({ request: req('/api/premium?i=1', bearer(claimed.token)), env })).status, 200, '一部返金では読める');
   assert.equal((await send({ type: 'charge.refunded', data: { object: { payment_intent: 'pi_parent', refunded: true, amount: 390, amount_refunded: 390 } } })).status, 200);
   assert.equal((await premiumGet({ request: req('/api/premium?i=1', bearer(claimed.token)), env })).status, 403);
+  assert.equal(counter(DB, `refund:${month()}`), 390, '累計390円の返金（10円＋380円）');
+  await send({ type: 'charge.refunded', data: { object: { payment_intent: 'pi_parent', refunded: true, amount: 390, amount_refunded: 390 } } });
+  assert.equal(counter(DB, `refund:${month()}`), 390, '同じ通知が来ても二重に数えない');
   // 申し立てに勝っても、返金済みなら戻さない
   await send({ type: 'charge.dispute.closed', data: { object: { payment_intent: 'pi_parent', status: 'won' } } });
   assert.equal((await premiumGet({ request: req('/api/premium?i=1', bearer(claimed.token)), env })).status, 403);

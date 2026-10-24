@@ -568,3 +568,11 @@ table.kpi td small { color: var(--sub); font-size: 10px; margin-left: 2px; }
 .pk-list li::before { content: '💦'; content: '💦' / ''; }
 .charm-list li::before { content: '♡'; content: '♡' / ''; color: #B83B6E; font-weight: 800; }
 .charm-card .praise { margin: 0 0 10px; font-size: 16px; font-weight: 700; text-align: left; }
+
+/* KPI：月100万円の試算 */
+.sim { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
+.field.small { font-size: 13px; }
+.field.small input { font-size: 16px; padding: 8px 10px; }
+.sim-out { margin-top: 10px; }
+table.kpi.money td { white-space: normal; width: 50%; }
+table.kpi.money td:last-child { overflow-wrap: anywhere; }

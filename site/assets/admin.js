@@ -25,6 +25,90 @@ function saveToken(t) {
   }
 }
 
+// ---------- 売上（目標：月100万円） ----------
+const TARGET = 1000000;
+const FEE = 0.036; // Stripe のカード手数料の目安（PayPay はもっと高い）
+const yen = (n) => `${Math.round(n).toLocaleString('ja-JP')}円`;
+const jstNow = () => new Date(Date.now() + 9 * 3600 * 1000);
+const monthKey = (d = jstNow()) => d.toISOString().slice(0, 7);
+const sumDays = (c, month, key) => Object.keys(c).filter((k) => k.startsWith(`day:${month}`) && k.endsWith(`:${key}`)).reduce((s, k) => s + c[k], 0);
+
+function revenue(c) {
+  const now = jstNow();
+  const month = monthKey(now);
+  const gross = c[`rev:${month}`] || 0;
+  const refund = c[`refund:${month}`] || 0;
+  const net = (gross - refund) * (1 - FEE);
+  const day = now.getUTCDate();
+  const days = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)).getUTCDate();
+  const pace = (net / day) * days;
+  const paidMonth = sumDays(c, month, 'paid');
+  const doneMonth = sumDays(c, month, 'done');
+  const arppu = paidMonth ? gross / paidMonth : 0;
+  const left = Math.max(TARGET - net, 0);
+  const perDay = left / Math.max(days - day + 1, 1);
+  return `<table class="kpi money">
+      <tr><td>今月の売上（税込）</td><td>${yen(gross)}</td></tr>
+      <tr><td>返金</td><td>${yen(refund)}</td></tr>
+      <tr><td>手取りの目安（手数料${(FEE * 100).toFixed(1)}%を引く）</td><td><b>${yen(net)}</b></td></tr>
+      <tr><td>このペースだと今月は</td><td><b>${yen(pace)}</b>（目標の${pct(pace, TARGET)}）</td></tr>
+      <tr><td>目標まで</td><td>${yen(left)}（残り${days - day + 1}日・1日あたり${yen(perDay)}${arppu ? `・約${Math.ceil(perDay / (arppu * (1 - FEE)))}件` : ''}）</td></tr>
+      <tr><td>平均単価（1件あたり）</td><td>${arppu ? yen(arppu) : '—'}</td></tr>
+      <tr><td>診断の完了1,000回あたりの売上</td><td>${doneMonth ? yen(((gross - refund) / doneMonth) * 1000) : '—'}</td></tr>
+      <tr><td>プラン別（今月）</td><td>じぶん用 ${yen(c[`rev:${month}:solo`] || 0)}／ふたり用 ${yen(c[`rev:${month}:duo`] || 0)}</td></tr>
+    </table>
+    <p class="hint">広告・アフィリエイト・タイアップの売上はここに入らない（各サービスの管理画面で見る）。下の試算に手で入れる。</p>`;
+}
+
+// 月100万円までの試算。いまの数字（直近7日）を初期値にして、どこを伸ばせば届くかを見る
+function simulator(c) {
+  const days = [...new Set(Object.keys(c).filter((k) => k.startsWith('day:')).map((k) => k.split(':')[1]))].sort().slice(-7);
+  const avg = (key) => (days.length ? days.reduce((s, d) => s + (c[`day:${d}:${key}`] || 0), 0) / days.length : 0);
+  const done = Math.round(avg('done')) || 3000;
+  const paid = avg('paid');
+  const rev = avg('rev');
+  const conv = done && paid ? ((paid / avg('done')) * 100).toFixed(2) : '0.60';
+  const arppu = paid ? Math.round(rev / paid) : 430;
+  const field = (id, label, value, step = 'any') => `<label class="field small">${label}<input id="sim-${id}" type="number" inputmode="decimal" step="${step}" value="${value}"></label>`;
+  return `<div class="sim">
+      ${field('done', '1日の診断の完了', done, 1)}
+      ${field('conv', '完了あたりの購入率（%）', conv)}
+      ${field('arppu', '平均単価（円）', arppu, 1)}
+      ${field('pv', '1人あたりのページ数', 6)}
+      ${field('rpm', '広告の収益（1,000ページあたり・円）', 150, 1)}
+      ${field('aff', 'アフィリエイト（1,000人あたり・円）', 300, 1)}
+      ${field('other', 'タイアップ・スタンプなど（月・円）', 0, 1000)}
+    </div>
+    <div class="sim-out" id="sim-out"></div>
+    <p class="hint">初期値は直近7日の平均（データがなければ目安）。広告は購入者には出さないので、購入した人の分は引いている。</p>`;
+}
+function bindSimulator() {
+  const out = document.getElementById('sim-out');
+  if (!out) return;
+  const v = (id) => Number(document.getElementById(`sim-${id}`).value) || 0;
+  const update = () => {
+    const users = v('done') * 30;
+    const buyers = users * (v('conv') / 100);
+    const sales = buyers * v('arppu') * (1 - FEE);
+    const ads = (users - buyers) * v('pv') * (v('rpm') / 1000);
+    const aff = users * (v('aff') / 1000);
+    const total = sales + ads + aff + v('other');
+    // 目標に届く1日の完了数（ほかの数字はそのまま）
+    const perUser = (v('conv') / 100) * v('arppu') * (1 - FEE) + (1 - v('conv') / 100) * v('pv') * (v('rpm') / 1000) + v('aff') / 1000;
+    const need = perUser > 0 ? Math.ceil(Math.max(TARGET - v('other'), 0) / 30 / perUser) : 0;
+    out.innerHTML = `<table class="kpi money">
+      <tr><td>完全版</td><td>${yen(sales)}（月${Math.round(buyers).toLocaleString('ja-JP')}件）</td></tr>
+      <tr><td>広告</td><td>${yen(ads)}</td></tr>
+      <tr><td>アフィリエイト</td><td>${yen(aff)}</td></tr>
+      <tr><td>そのほか</td><td>${yen(v('other'))}</td></tr>
+      <tr><td><b>月の合計（手取りの目安）</b></td><td><b>${yen(total)}</b>（目標の${pct(total, TARGET)}）</td></tr>
+      <tr><td>月100万円に必要な1日の完了</td><td><b>${need.toLocaleString('ja-JP')}回</b></td></tr>
+    </table>`;
+  };
+  document.querySelectorAll('.sim input').forEach((i) => i.addEventListener('input', update));
+  update();
+}
+
 function funnel(c) {
   // [名前, 回数, くらべる段階の番号]（購入案内の2行は、どちらも「くわしい診断の完了」とくらべる）
   const steps = [
@@ -131,6 +215,8 @@ export async function viewAdmin() {
     return;
   }
   render(`${brand()}<h1 class="sheet-title">KPI</h1>
+    <section class="card"><h2>売上（目標：月100万円）</h2>${revenue(c)}</section>
+    <section class="card"><h2>月100万円までの試算</h2>${simulator(c)}</section>
     <section class="card"><h2>ファネル</h2>${funnel(c)}</section>
     <section class="card"><h2>日別（直近14日）</h2>${daily(c)}</section>
     <section class="card"><h2>A/Bテスト</h2>${abTable(c)}</section>
@@ -138,6 +224,7 @@ export async function viewAdmin() {
     <section class="card"><h2>タイプ別の完了</h2>${types(c)}</section>
     ${form}`);
   bindForm();
+  bindSimulator();
 }
 
 function bindForm() {

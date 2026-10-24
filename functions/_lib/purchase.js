@@ -33,6 +33,18 @@ export function abTagsOf(raw) {
     });
 }
 
+// 売上（円）を月・日・プラン・A/Bの案ごとに足す（月100万円の目標に向けて、KPI画面で見る）。日付は日本時間
+export const jstDay = (now = Date.now()) => new Date(now + 9 * 3600 * 1000).toISOString().slice(0, 10);
+export function revenueStmts(env, amount, { plan = '', tags = [] } = {}) {
+  if (!Number.isFinite(amount) || amount <= 0) return [];
+  const add = env.DB.prepare('INSERT INTO counters (k, n) VALUES (?1, ?2) ON CONFLICT(k) DO UPDATE SET n = n + ?2');
+  const day = jstDay();
+  const keys = ['rev', `rev:${day.slice(0, 7)}`, `day:${day}:rev`];
+  if (plan) keys.push(`rev:${day.slice(0, 7)}:${plan}`);
+  tags.forEach((tag) => keys.push(`ab:${tag}:rev`));
+  return keys.map((k) => add.bind(k, Math.round(amount)));
+}
+
 // 支払い済みの Session を記録する。新しく記録したときだけ isNew = true（支払い完了の数はそのときだけ数える）
 export async function recordPurchase(env, session) {
   const id = purchaseIdOf(session.id);
@@ -49,8 +61,11 @@ export async function recordPurchase(env, session) {
     const bump = env.DB.prepare('INSERT INTO counters (k, n) VALUES (?1, 1) ON CONFLICT(k) DO UPDATE SET n = n + 1');
     const day = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10); // 日本時間
     stmts.push(bump.bind(`premium:paid:${plan}`), bump.bind('premium:paid'), bump.bind(`day:${day}:paid`));
-    // A/Bテストの案ごとの支払い完了
-    abTagsOf(session.metadata?.ab).forEach((tag) => stmts.push(bump.bind(`ab:${tag}:paid`)));
+    // A/Bテストの案ごとの支払い完了と売上（価格のテストは、件数ではなく売上でくらべる）
+    const tags = abTagsOf(session.metadata?.ab);
+    tags.forEach((tag) => stmts.push(bump.bind(`ab:${tag}:paid`)));
+    // 円はゼロ小数通貨なので、amount_total がそのまま円
+    stmts.push(...revenueStmts(env, Number(session.amount_total), { plan, tags }));
   }
   // 購入の記録より先に返金・申し立てが届いていたら、ここで止める
   stmts.push(env.DB.prepare('UPDATE purchases SET refunded = 1 WHERE id = ?1 AND payment_intent IN (SELECT payment_intent FROM refunds)').bind(id));
