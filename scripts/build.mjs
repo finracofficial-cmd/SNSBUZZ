@@ -102,18 +102,24 @@ fs.writeFileSync(path.join(dist, 'robots.txt'), `User-agent: *\n${hiddenPaths.jo
 // Cloudflare Pages のヘッダ。
 //   ・JS/CSS は名前に中身のハッシュが入っているので、1年キャッシュしてよい
 //   ・/thanks/ は決済のIDがURLに入るので、ほかのサイトにURLを送らず、キャッシュもしない
+// 広告（AdSense）を入れたときだけ、広告の配信元を足す（入れていないときは自分のサイトだけ）
+const ADS = !!SITE.ads?.client;
+const AD_HOSTS = 'https://pagead2.googlesyndication.com https://*.googlesyndication.com https://*.doubleclick.net https://*.google.com https://*.gstatic.com https://*.adtrafficquality.google';
 const CSP = [
   "default-src 'self'",
-  "script-src 'self'",
+  `script-src 'self'${ADS ? ` ${AD_HOSTS}` : ''}`,
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   'font-src https://fonts.gstatic.com',
-  "img-src 'self' data: blob:",
-  "connect-src 'self' data: blob:",
+  `img-src 'self' data: blob:${ADS ? ' https:' : ''}`,
+  `connect-src 'self' data: blob:${ADS ? ` ${AD_HOSTS}` : ''}`,
   "media-src 'self' blob:",
+  ...(ADS ? [`frame-src ${AD_HOSTS}`] : []),
   "frame-ancestors 'none'",
   "base-uri 'self'",
   "form-action 'self'",
 ].join('; ');
+// AdSense の ads.txt（広告の売り手が本物であることを示す）
+if (ADS) fs.writeFileSync(path.join(dist, 'ads.txt'), `google.com, ${SITE.ads.client.replace(/^ca-/, '')}, DIRECT, f08c47fec0942fa0\n`);
 // ---------- JS と CSS をまとめて小さくし、中身のハッシュを名前に入れる ----------
 // （ハッシュが変わればURLも変わるので、ブラウザに長くキャッシュさせても新旧が混ざらない）
 // ボタンを押したときだけ使う大きいもの（シールの QR）は、別のファイルに分けて、そのときだけ読みこむ

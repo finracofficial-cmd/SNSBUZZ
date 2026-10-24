@@ -156,6 +156,8 @@ function viewAbout() {
       <p>回答や個人を特定する情報は集めていません。集計しているのは、診断結果のタイプ・ボタンが押された回数・今週のお題の票数だけです（レア度や割合の表示に使います）。</p>
       <p>完全版を表示するときは、くわしい診断のパラメータの点数（6つの数字）をサーバーに送ります。保存はしません。お支払いの情報は決済サービスの Stripe が扱い、このサイトはカード番号を受け取りません。</p>
       <p>結果のシェアURL・相性のおさそいリンク・わたしクイズのリンクには、あなたが入れたニックネームと、かんたん診断の結果（タイプと4つの軸。クイズは答えの番号）だけが入ります。くわしい診断のパラメータ（恋愛積極度など）は入りません。グループ診断では、ニックネームとかんたん診断のタイプをグループのページに表示します。グループは作成から90日で消えます。グループを作った人はメンバーを外したりグループを消したりでき、メンバーは自分で抜けられます。</p>
+      ${SITE.ads?.client ? '<p>無料のページには広告（Google AdSense）を出しています。10代の利用が多いため、閲覧の履歴にもとづく広告（パーソナライズ広告）は出さない設定にしています。広告の配信のため、Google が Cookie を使うことがあります。完全版を購入した端末には広告を出しません。</p>' : ''}
+      ${SITE.affiliate?.amazonTag ? `<p>「このタイプにおすすめ」はアフィリエイト広告（Amazonアソシエイト）です。Amazonのアソシエイトとして、${esc(SITE.name)}は適格販売により収入を得ています。</p>` : ''}
       <p>結果画像のスクリーンショット、動画での紹介、配信での利用は自由です。</p>
     </div>
     ${foot()}`);
@@ -298,6 +300,11 @@ async function routeInner() {
 }
 
 function delegate(e) {
+  // アフィリエイト・外のお店へのリンク（数えるだけ。移動はリンクのまま）
+  const aff = e.target.closest('[data-aff]');
+  if (aff) track('aff', aff.dataset.aff);
+  const out = e.target.closest('[data-out]');
+  if (out) track('out', out.dataset.out);
   const shareEl = e.target.closest('[data-ch]');
   if (shareEl && handleShareClick(shareEl)) {
     e.preventDefault();

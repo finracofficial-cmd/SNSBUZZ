@@ -576,3 +576,11 @@ table.kpi td small { color: var(--sub); font-size: 10px; margin-left: 2px; }
 .sim-out { margin-top: 10px; }
 table.kpi.money td { white-space: normal; width: 50%; }
 table.kpi.money td:last-child { overflow-wrap: anywhere; }
+
+/* 広告とアフィリエイト：ボタンから離して置き、広告だとわかるようにする */
+.ad-slot { margin: 28px 0; padding: 8px 0; min-height: 120px; text-align: center; }
+.ad-label { display: block; font-size: 11px; color: var(--sub); margin-bottom: 4px; }
+.picks .pr { display: inline-block; font-size: 11px; font-weight: 800; color: var(--sub); border: 1px solid var(--line); border-radius: 6px; padding: 0 6px; vertical-align: middle; }
+.pick-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.pick-list a { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 14px; background: var(--bg); color: var(--ink); text-decoration: none; font-weight: 700; font-size: 15px; }
+.pick-list a span { flex: 0 0 auto; font-size: 12px; color: var(--type-text); }

@@ -18,6 +18,9 @@ const ALLOWED = {
   group: (v) => (['create', 'join'].includes(v) ? v : null),
   // 結果への「わかる〜！」「ちょっとちがう」
   agree: (v) => (['yes', 'no'].includes(v) ? v : null),
+  // アフィリエイトのリンク（タイプ番号）・外のお店（LINEスタンプ・グッズ・LINE公式アカウント）
+  aff: (v) => (/^(\d|1\d)$/.test(v) ? v : null),
+  out: (v) => (['stamps', 'goods', 'line'].includes(v) ? v : null),
   // 結果を持っている端末が、別の日にまた開いた（1日1回）
   visit: (v) => (v === 'return' ? v : null),
   // トップの1問目のカードから始めた

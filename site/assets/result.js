@@ -11,6 +11,8 @@ import { drawCarousel, toFeed } from './carousel.js';
 import { textResult } from './textshare.js';
 import { canRecordVideo, recordReveal } from './video.js';
 import { nowCard, bindNowCard, keepNowFresh } from './now.js';
+import { adSlot, fillAds } from './ads.js';
+import { picksCard } from './picks.js';
 import { pollCard, bindPoll } from './polls.js';
 import { exportPayload, importPayload } from './carryover.js';
 import { app, ORIGIN, esc, jp, store, track, loadStats, render, toast, foot, brand, shareLinks, shareImageBlob, shareImageSet, openModal, closeModal, inAppHint, navNow, busy, copySilently, copyText, shareVideo } from './ui.js';
@@ -213,6 +215,8 @@ export async function viewResult(r, shareId) {
     <section class="card"><h2>あなたの4つの軸</h2>${axisBars(r)}</section>
     <section class="card"><h2>成分表</h2>${labelPanel(r.index, r)}</section>
     <section class="card"><h2>あるある</h2><ul class="aru">${t.aru.map((a) => `<li class="jp">${jp(a)}</li>`).join('')}</ul></section>
+    ${picksCard(r.index)}
+    ${adSlot('result')}
     ${compatSection(r.index, r)}
     <section class="card"><h2>${esc(t.label)}をもっと知る</h2>
       <p>性格・恋愛・友達・学校・バイト・推し活・トリセツまで、タイプの解説を全部読めます。</p>
@@ -227,6 +231,7 @@ export async function viewResult(r, shareId) {
     </section>
     ${nowCard(r.index)}
     ${pollCard()}
+    ${moreFun()}
     <button class="btn" data-go="#/q">もう一回診断する</button>
     <button class="btn sub" data-go="#/zukan">図鑑をみる（全${TYPES.length}タイプ）</button>
     ${foot()}`, r.index);
@@ -276,6 +281,21 @@ export async function viewResult(r, shareId) {
   keepNowFresh(r.index, gen, navNow);
   bindPoll(gen, navNow);
   bindSticker(r, url);
+  fillAds(app);
+}
+
+// 「もっと楽しむ」：LINEスタンプ・グッズ・LINE公式アカウント（設定に URL があるものだけ）
+export function moreFun() {
+  const l = SITE.links || {};
+  const items = [
+    [l.stamps, 'stamps', 'ポンコツ図鑑のLINEスタンプ'],
+    [l.goods, 'goods', 'タイプ別のグッズ（ステッカー・アクスタ）'],
+    [l.lineOfficial, 'line', 'LINEで毎週のお題を受け取る'],
+  ].filter(([url]) => url);
+  if (!items.length) return '';
+  return `<section class="card"><h2>もっと楽しむ</h2><div class="btn-col">${items
+    .map(([url, key, label]) => `<a class="btn sub" href="${esc(url)}" target="_blank" rel="noopener" data-out="${key}">${esc(label)}</a>`)
+    .join('')}</div></section>`;
 }
 
 // シール帳用のシール。QR のリンクは相性のおさそいつき（ch=print で、シールから来た人を数える）
@@ -350,6 +370,8 @@ export function viewType(index) {
     </section>
     <section class="card" id="sec-school"><h2>学校・バイト・仕事</h2><p>${esc(t.school)}</p>
       <h3>向いてるかもしれないバイト・仕事</h3><div class="chips">${t.jobs.map((j) => `<span class="chip soft">${esc(j)}</span>`).join('')}</div></section>
+    ${picksCard(index)}
+    ${adSlot('type')}
     <section class="card" id="sec-toriset"><h2>${esc(t.chara)}のトリセツ</h2>
       <div class="two">
         <div><h3>こうしてくれるとうれしい</h3><ul class="points good">${t.toriset.do.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>
@@ -367,6 +389,7 @@ export function viewType(index) {
   app.querySelectorAll('[data-scroll]').forEach((b) =>
     b.addEventListener('click', () => app.querySelector(`#${b.dataset.scroll}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })),
   );
+  fillAds(app);
   return true;
 }
 
@@ -410,6 +433,8 @@ export function viewZukan() {
       <div class="stickerbook">${cards}</div>
     </section>
     ${mine ? '<button class="btn type" data-invite-mine style="margin-top:20px">友達を誘ってシールを集める</button>' : '<button class="btn" data-go="#/q" style="margin-top:20px">診断する</button>'}
+    ${adSlot('zukan')}
+    ${moreFun()}
     ${mine ? `<section class="card carry"><h2>ほかのブラウザでも続きから</h2>
       <p class="hint">LINEの中のブラウザと Safari・Chrome では、保存場所が別です。このリンクを LINE の Keep メモに送っておくと、どちらでも結果とシール帳の続きから遊べます。ほかの人には送らないでね。</p>
       <a class="btn sub small" data-ch="carry:line" href="https://line.me/R/share?text=${encodeURIComponent(`ポンコツ図鑑の続きリンク（自分用）\n${ORIGIN}/?openExternalBrowser=1#/me/${exportPayload({ mineQuick: store.get('mineQuick', null), mineDetail: store.get('mineDetail', null), met, gotHidden: store.get('gotHidden', []) })}`)}" target="_blank" rel="noopener">LINE の Keep メモに送る</a>
@@ -419,6 +444,7 @@ export function viewZukan() {
     const r = decodeResult(mine.code);
     if (r) openInviteModal(r);
   });
+  fillAds(app);
 }
 
 // 続きリンク（#/me/...）を開いたとき：この端末にない分だけ足す
