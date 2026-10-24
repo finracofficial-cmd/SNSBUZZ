@@ -4,7 +4,7 @@ import { SITE } from './config.js';
 import { TYPES, HIDDEN, BASE_COUNT, QUESTIONS, PARAM_QUESTIONS, indexFromNo, typeNo } from './data.js';
 import { decodeResult } from './logic.js';
 import { charaSVG } from './chara.js';
-import { app, esc, store, track, render, foot, brand, toast, handleShareClick, closeModal, navBegin, navNow, safeDecode, loadStats } from './ui.js';
+import { app, esc, jp, store, track, render, foot, brand, toast, handleShareClick, closeModal, navBegin, navNow, safeDecode, loadStats } from './ui.js';
 import { startQuiz, handleQuizClick, cancelQuiz, savedQuickAnswers, optionsHtml, questionHint, quizActive } from './quiz.js';
 import { viewResult, viewType, viewZukan, showLockedType, receiveCarryover } from './result.js';
 import { viewReport } from './report.js';
@@ -96,7 +96,7 @@ async function viewHome() {
     ${mine && TYPES[mine.index] && mine.code ? `<a class="card mini-result" href="#/r/${esc(mine.code)}/${esc(mine.shareId)}">
       ${charaSVG(mine.index, { size: 64 })}<div><small>前回のあなた</small><b>${esc(TYPES[mine.index].label)}</b><small class="now-line" data-now-line>いまは「${esc(nowName(mine.index).text)}」</small></div><span>結果を見る →</span></a>` : `
     <section class="card q1card"><p class="lead">さっそく1問目（全${QUESTIONS.length}問）</p>
-      <h2 class="qtext">${esc(q1.text)}</h2>
+      <h2 class="qtext jp">${jp(q1.text)}</h2>
       ${questionHint(q1, true)}
       <div class="opts">${optionsHtml('axis', 0, 'data-q1')}</div>
     </section>`}

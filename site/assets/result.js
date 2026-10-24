@@ -13,7 +13,7 @@ import { canRecordVideo, recordReveal } from './video.js';
 import { nowCard, bindNowCard, keepNowFresh } from './now.js';
 import { pollCard, bindPoll } from './polls.js';
 import { exportPayload, importPayload } from './carryover.js';
-import { app, ORIGIN, esc, store, track, loadStats, render, toast, foot, brand, shareLinks, shareImageBlob, shareImageSet, openModal, closeModal, inAppHint, navNow, busy, copySilently, copyText, shareVideo } from './ui.js';
+import { app, ORIGIN, esc, jp, store, track, loadStats, render, toast, foot, brand, shareLinks, shareImageBlob, shareImageSet, openModal, closeModal, inAppHint, navNow, busy, copySilently, copyText, shareVideo } from './ui.js';
 import { invitePairBox, inviteBanner, openInviteModal, openGroupCreate, openQuizCreate, friends } from './social.js';
 import { openProfileCard } from './profile.js';
 
@@ -26,6 +26,22 @@ export const shareUrl = (r, shareId) =>
   `${ORIGIN}/t/${typeNo(r.index).toLowerCase()}/?${new URLSearchParams({ s: shareId, f: quickCodeOf(encodeResult(r)) })}`;
 // 「でも…」で始まる痛い一行は、それだけだと前の文が欠けて見えるので、頭の「でも」を外して使う
 export const roastAlone = (t) => t.roast.replace(/^でも、?/, '');
+
+// 結果のいちばん上に出す「ポンコツなところ」と「だから愛される」。
+// ポンコツ診断なので、まずポンコツ（痛い一行＋ポンコツポイント3つ）を見せ、そのあとに良いところを出す
+// （良いところが先だと「何がポンコツなのか分からない」「ほめられているだけ？」になる、という声があった）
+export function ponkotsuBlock(t, { who = 'あなた', charm = true } = {}) {
+  return `<section class="ponkotsu-card">
+      <p class="pk-head"><span aria-hidden="true">🙈</span> ${esc(who)}のポンコツなところ</p>
+      <p class="pk-main jp"><span>${jp(roastAlone(t))}</span></p>
+      <ul class="pk-list">${t.ponkotsu.map((x) => `<li class="jp">${jp(x)}</li>`).join('')}</ul>
+    </section>
+    <section class="charm-card">
+      <p class="pk-head love"><span aria-hidden="true">💗</span> でも、だから愛される</p>
+      <p class="praise jp">${jp(t.praise)}</p>
+      ${charm ? `<ul class="charm-list">${t.charm.map((x) => `<li class="jp">${jp(x)}</li>`).join('')}</ul>` : ''}
+    </section>`;
+}
 function shareText(r) {
   const t = TYPES[r.index];
   return `【${t.label}】だった！（${titleOf(r.purity)}・ポンコツ純度${r.purity}%）\n${roastAlone(t)}\n#${SITE.hashtag} あなたは何タイプ？`;
@@ -169,11 +185,10 @@ export async function viewResult(r, shareId) {
       <span class="no">${noLabel(r.index)}</span>
       <div class="chara-wrap">${charaSVG(r.index, { size: 240 })}</div>
       <h1 class="label">${esc(t.label)}</h1>
-      <p class="catch-line">${esc(t.catch)}</p>
+      <p class="catch-line jp">${jp(t.catch)}</p>
       <span class="chip">${esc(title)}・ポンコツ純度${r.purity}%</span>
-      <p class="praise">${esc(t.praise)}</p>
-      <p class="roast"><span>${esc(t.roast)}</span></p>
     </section>
+    ${ponkotsuBlock(t)}
     ${invitePairBox(r)}
     ${agreeCard(encodeResult(r))}
     <section class="share">
@@ -197,7 +212,7 @@ export async function viewResult(r, shareId) {
     ${detailTeaser(r)}
     <section class="card"><h2>あなたの4つの軸</h2>${axisBars(r)}</section>
     <section class="card"><h2>成分表</h2>${labelPanel(r.index, r)}</section>
-    <section class="card"><h2>あるある</h2><ul class="aru">${t.aru.map((a) => `<li>${esc(a)}</li>`).join('')}</ul></section>
+    <section class="card"><h2>あるある</h2><ul class="aru">${t.aru.map((a) => `<li class="jp">${jp(a)}</li>`).join('')}</ul></section>
     ${compatSection(r.index, r)}
     <section class="card"><h2>${esc(t.label)}をもっと知る</h2>
       <p>性格・恋愛・友達・学校・バイト・推し活・トリセツまで、タイプの解説を全部読めます。</p>
@@ -309,17 +324,16 @@ export function viewType(index) {
       <span class="no">${noLabel(index)}</span>
       <div class="chara-wrap">${charaSVG(index, { size: 240 })}</div>
       <h1 class="label">${esc(t.label)}</h1>
-      <p class="catch-line">${esc(t.catch)}</p>
-      <p class="praise">${esc(t.praise)}</p>
-      <p class="roast"><span>${esc(t.roast)}</span></p>
-      <button class="btn" data-go="#/q">${mine ? 'もう一回診断する' : 'あなたも診断する（無料・1分）'}</button>
+      <p class="catch-line jp">${jp(t.catch)}</p>
     </section>
+    ${ponkotsuBlock(t, { who: 'このタイプ', charm: false })}
+    <button class="btn" data-go="#/q">${mine ? 'もう一回診断する' : 'あなたも診断する（無料・1分）'}</button>
     <nav class="secnav" aria-label="もくじ">${NAV.map(([id, l]) => `<button data-scroll="${id}">${l}</button>`).join('')}</nav>
     <section class="card" id="sec-self"><h2>基本の性格</h2>
       <p>${esc(t.summary)}</p>
       <div class="two">
-        <div><h3>愛されポイント</h3><ul class="points good">${t.charm.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>
-        <div><h3>ポンコツポイント</h3><ul class="points bad">${t.ponkotsu.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>
+        <div><h3>ポンコツポイント</h3><ul class="points bad">${t.ponkotsu.map((x) => `<li class="jp">${jp(x)}</li>`).join('')}</ul></div>
+        <div><h3>愛されポイント</h3><ul class="points good">${t.charm.map((x) => `<li class="jp">${jp(x)}</li>`).join('')}</ul></div>
       </div>
     </section>
     <section class="card"><h2>成分表</h2>${labelPanel(index, null)}</section>

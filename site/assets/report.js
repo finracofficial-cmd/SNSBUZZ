@@ -12,7 +12,7 @@ import { app, ORIGIN, esc, track, loadStats, render, toast, foot, brand, shareLi
 import { openPaywall, fetchPremium, hasPremium, previewUnlocked, watchClaim, premiumStatus, maybeShowAfterPurchase, restorePurchase, hasGift, openGift, priceOf } from './premium.js';
 import { openInviteModal, openGroupCreate, invitePairBox, openQuizCreate } from './social.js';
 import { openProfileCard } from './profile.js';
-import { shareCarousel, shareUrl, bindSticker } from './result.js';
+import { shareCarousel, shareUrl, bindSticker, ponkotsuBlock } from './result.js';
 import { textResult } from './textshare.js';
 import { canRecordVideo, recordReveal } from './video.js';
 import { nowCard, bindNowCard, keepNowFresh } from './now.js';
@@ -191,8 +191,8 @@ export async function viewReport(r, shareId) {
       <p class="nickname">${esc(r.nickname.text)}</p>
       <h1 class="label">${esc(t.label)}</h1>
       <div class="chips center"><span class="chip">${esc(title)}・ポンコツ純度${r.purity}%</span><span class="chip love">${esc(love.name)}</span></div>
-      <p class="praise">${esc(t.praise)}</p>
     </section>
+    ${ponkotsuBlock(t, { charm: false })}
     ${invitePairBox(r)}
     <section class="share">
       <button class="btn type" data-card="nick">二つ名カードを保存</button>

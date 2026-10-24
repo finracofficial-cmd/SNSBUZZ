@@ -4,6 +4,7 @@ import { TYPES, AXES, LOVE_TYPES, isHidden, typeNo } from './data.js';
 import { charaDataURL, shade, tint } from './chara.js';
 import { statValues, statLabels } from './radar.js';
 import { fontCss } from './fonts.js';
+import { phrases } from './jptext.js';
 
 export const FONT = '"M PLUS Rounded 1c", "Hiragino Maru Gothic ProN", "Hiragino Sans", "Noto Sans JP", sans-serif';
 export const INK = '#3B2F33';
@@ -32,9 +33,7 @@ export function loadImage(src) {
   });
 }
 
-// 日本語の折り返し。単語（Intl.Segmenter）単位で切り、行頭禁則を守り、行の長さをそろえる。
-const segmenter = typeof Intl !== 'undefined' && Intl.Segmenter ? new Intl.Segmenter('ja', { granularity: 'word' }) : null;
-
+// 日本語の折り返し。文節（jptext.js）単位で切り、行頭禁則を守り、行の長さをそろえる。
 function greedy(ctx, pieces, maxWidth) {
   const lines = [];
   let line = '';
@@ -63,20 +62,8 @@ function greedy(ctx, pieces, maxWidth) {
   return lines;
 }
 
-// 単語の区切りの補正：カタカナが続くところ（「リ|マインド」）と、数字と単位（「3|日」）は1つにまとめる
-const KATA = /[\u30a0-\u30ff]/;
-function mergePieces(pieces) {
-  const out = [];
-  for (const p of pieces) {
-    const prev = out[out.length - 1];
-    if (prev && ((KATA.test(prev[prev.length - 1]) && KATA.test(p[0])) || (/\d$/.test(prev) && /^[^\s、。！？]{1,2}$/.test(p)))) out[out.length - 1] = prev + p;
-    else out.push(p);
-  }
-  return out;
-}
-
 export function wrap(ctx, text, maxWidth, balance = true) {
-  const pieces = segmenter ? mergePieces(Array.from(segmenter.segment(text), (s) => s.segment)) : Array.from(text);
+  const pieces = phrases(text);
   const lines = greedy(ctx, pieces, maxWidth);
   if (!balance || lines.length < 2) return lines;
   // 同じ行数に収まる範囲で幅を詰めて、最後の行だけ極端に短くならないようにする
@@ -206,23 +193,41 @@ export async function drawStoryCard({ index, purity, title, rarity, gold = false
   ctx.fillText(chip, W / 2, y + 45);
   y += 64 + 70;
 
-  // ほめ言葉
-  ctx.font = `500 44px ${FONT}`;
-  ctx.fillStyle = INK;
-  for (const line of wrap(ctx, t.praise, W - 240)) {
-    ctx.fillText(line, W / 2, y);
-    y += 62;
+  // まずポンコツ（蛍光ペン風の一行）、そのあとに良いところ（ポンコツ診断なので、何がポンコツかを先に見せる）。
+  // 文が長いタイプ・二つ名つきでも、下のタイルと検索の帯が安全域（y=1660まで）に収まるよう、文字を少しずつ小さくする
+  const roastText = t.roast.replace(/^でも、?/, '');
+  const praiseText = `でも、${t.praise}`;
+  let rs;
+  let ps;
+  let roastLines;
+  let praiseLines;
+  for ([rs, ps] of [[48, 42], [44, 38], [40, 35], [36, 32]]) {
+    ctx.font = `800 ${rs}px ${FONT}`;
+    roastLines = wrap(ctx, roastText, W - 220);
+    ctx.font = `500 ${ps}px ${FONT}`;
+    praiseLines = wrap(ctx, praiseText, W - 240);
+    if (y + 56 + roastLines.length * (rs + 20) + 14 + praiseLines.length * (ps + 16) <= 1296) break;
   }
-  // 痛いところを突く一行（蛍光ペン風）
-  y += 18;
-  ctx.font = `800 48px ${FONT}`;
-  for (const line of wrap(ctx, t.roast, W - 220)) {
+  ctx.font = `800 34px ${FONT}`;
+  ctx.fillStyle = shade(t.color, 0.45);
+  ctx.fillText('わたしのポンコツ', W / 2, y - 6);
+  y += 56;
+  ctx.font = `800 ${rs}px ${FONT}`;
+  for (const line of roastLines) {
     const lw = ctx.measureText(line).width;
     ctx.fillStyle = 'rgba(255, 214, 77, .75)';
-    ctx.fillRect(W / 2 - lw / 2 - 10, y - 22, lw + 20, 28);
+    ctx.fillRect(W / 2 - lw / 2 - 10, y - rs * 0.46, lw + 20, rs * 0.58);
     ctx.fillStyle = INK;
     ctx.fillText(line, W / 2, y);
-    y += 68;
+    y += rs + 20;
+  }
+  // だから愛される（ほめ言葉）
+  y += 14;
+  ctx.font = `500 ${ps}px ${FONT}`;
+  ctx.fillStyle = INK;
+  for (const line of praiseLines) {
+    ctx.fillText(line, W / 2, y);
+    y += ps + 16;
   }
 
   // 数字のタイル
@@ -244,7 +249,7 @@ export async function drawStoryCard({ index, purity, title, rarity, gold = false
     ctx.fillStyle = INK;
     if (i === 2 || (i === 1 && loveName)) {
       // 1行に収まるなら縮めて1行。収まらないときだけ2行に折る（「誰とでも5／分で親友」のような切れ方を避ける）
-      const size = fitFont(ctx, value, 800, 32, 25, tw - 24);
+      const size = fitFont(ctx, value, 800, 32, 21, tw - 24);
       if (ctx.measureText(value).width <= tw - 24) {
         ctx.fillText(value, x + tw / 2, ty + 104 + size * 0.1);
       } else {

@@ -5,7 +5,7 @@ import { compatOf, decodeResult, encodeResult, quickCodeOf, resultFromSums, axis
 import { charaSVG } from './chara.js';
 import { drawPairCard, canvasToBlob } from './card.js';
 import { optionsHtml } from './quiz.js';
-import { app, ORIGIN, esc, cleanName, store, track, api, render, toast, openModal, closeModal, foot, brand, shareLinks, shareImageBlob, navNow, busy, copyText, confirmModal, safeDecode } from './ui.js';
+import { app, ORIGIN, esc, cleanName, store, track, api, render, toast, openModal, closeModal, foot, brand, shareLinks, shareImageBlob, navNow, busy, copyText, confirmModal, safeDecode, jp } from './ui.js';
 import { jstParts } from './clock.js';
 
 // ---------- 出会ったタイプ（図鑑のコンプリート用） ----------
@@ -469,7 +469,7 @@ function nextFriendQuestion() {
       <div class="progress" aria-hidden="true"><i style="width:${(fq.pos / total) * 100}%"></i></div>
       <div class="qhead"><span>わたしクイズ　${fq.pos + 1} / ${total}</span></div>
       <p class="lead">${esc(fq.name)}さんは、どれを選んだ？</p>
-      <h2 class="qtext">${esc(q.text)}</h2>
+      <h2 class="qtext jp">${jp(q.text)}</h2>
       <div class="opts">${optionsHtml('axis', qi, 'data-fq')}</div>`);
     app.querySelectorAll('[data-fq]').forEach((b) =>
       b.addEventListener('click', () => answerFriend(Number(b.dataset.fq) === fq.answers[qi], b, `[data-fq="${fq.answers[qi]}"]`)),

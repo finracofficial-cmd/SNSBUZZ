@@ -1,5 +1,6 @@
 // 画面まわりの共通部品（描画・保存・計測・API・トースト・モーダル）
 import { SITE } from './config.js';
+import { phrases } from './jptext.js';
 import { TYPES } from './data.js';
 import { shade, tint } from './chara.js';
 
@@ -14,6 +15,9 @@ export const esc = (s) =>
   String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
 // ニックネームなど人が入力する短い文字列。制御文字を落として長さをそろえる
+// 文節の切れ目に <wbr> を入れた HTML（エスケープ済み）。class="jp" の中で使う
+export const jp = (text) => phrases(text).map(esc).join('<wbr>');
+
 // 名前をきれいにする（制御文字・< >・見えない文字（ゼロ幅・文字の向きを変えるもの）を落とす）
 export const cleanName = (s, max = 10) =>
   Array.from(String(s ?? '').replace(/[\u0000-\u001f\u007f<>]/g, '').replace(/[\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]/g, '').trim())
@@ -130,11 +134,36 @@ export function setTheme(index) {
   root.setProperty('--type-soft', tint(c, 0.75));
 }
 
+// ボタン・見出し・案内文も、文節の切れ目でだけ折り返す（「TikTok・インス／タの投稿用」のように切れないように）。
+// 文字のところに <wbr> を入れて、class="jp"（word-break: keep-all）を付ける
+const PHRASE_TARGETS = 'button, .btn, h1, h2, h3, .lead, .hint, .chip, .sheet-title, .catch, .paynote';
+export function wrapPhrases(root) {
+  root?.querySelectorAll(PHRASE_TARGETS).forEach((el) => {
+    if (el.closest('.jp')) return;
+    el.classList.add('jp');
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    const nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+    nodes.forEach((n) => {
+      if (n.parentElement?.closest('svg')) return;
+      const parts = phrases(n.nodeValue);
+      if (parts.length < 2) return;
+      const frag = document.createDocumentFragment();
+      parts.forEach((p, i) => {
+        if (i) frag.append(document.createElement('wbr'));
+        frag.append(p);
+      });
+      n.replaceWith(frag);
+    });
+  });
+}
+
 export function render(html, index = null) {
   setTheme(index);
   closeModal();
   document.body.classList.remove('has-paybar');
   app.innerHTML = `<div class="view">${html}</div>`;
+  wrapPhrases(app);
   window.scrollTo(0, 0);
 }
 
@@ -164,6 +193,7 @@ export function openModal(html, onClose) {
   };
   closeModal.cb = onClose;
   const sheet = modalEl.querySelector('.sheet');
+  wrapPhrases(sheet);
   const title = sheet.querySelector('h1, h2, .sheet-title, p');
   if (title) {
     title.id ||= 'modal-title';

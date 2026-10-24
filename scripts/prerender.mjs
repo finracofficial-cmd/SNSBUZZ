@@ -31,16 +31,23 @@ export function typeBody(i) {
       <div class="chara-wrap">${charaSVG(i, { size: 240 })}</div>
       <h1 class="label">${esc(t.label)}</h1>
       <p class="catch-line">${esc(t.catch)}</p>
-      <p class="praise">${esc(t.praise)}</p>
-      <p class="roast"><span>${esc(t.roast)}</span></p>
-      <a class="btn" href="/#/q">あなたも診断する（無料・1分）</a>
     </section>
+    <section class="ponkotsu-card">
+      <p class="pk-head">このタイプのポンコツなところ</p>
+      <p class="pk-main"><span>${esc(t.roast.replace(/^でも、?/, ''))}</span></p>
+      ${list(t.ponkotsu, 'pk-list')}
+    </section>
+    <section class="charm-card">
+      <p class="pk-head love">でも、だから愛される</p>
+      <p class="praise">${esc(t.praise)}</p>
+    </section>
+    <a class="btn" href="/#/q">あなたも診断する（無料・1分）</a>
     <section class="card"><h2>基本の性格</h2>
       <p>${esc(t.summary)}</p>
       <p class="hint">4つの軸：${esc(axesOf(i))}</p>
       <div class="two">
-        <div><h3>愛されポイント</h3>${list(t.charm, 'points good')}</div>
         <div><h3>ポンコツポイント</h3>${list(t.ponkotsu, 'points bad')}</div>
+        <div><h3>愛されポイント</h3>${list(t.charm, 'points good')}</div>
       </div>
     </section>
     <section class="card"><h2>${esc(t.label)}のあるある</h2>${list(t.aru)}</section>

@@ -4,7 +4,7 @@
 import { TYPES, QUESTIONS, PARAM_QUESTIONS, CHAPTERS, PARAMS, PARAM_MAX, LOVE_TYPES, HIDDEN, BASE_COUNT, loveIndexOf, isHidden } from './data.js';
 import { judge, encodeResult, rankOf, paramLevel, LEVEL_NAMES } from './logic.js';
 import { charaSVG } from './chara.js';
-import { app, esc, store, track, loadStats, render, toast, navNow } from './ui.js';
+import { app, esc, jp, store, track, loadStats, render, toast, navNow } from './ui.js';
 import { variant, abTrack } from './ab.js';
 
 // 選択肢は、いつも「控えめ → 全開」の順（点数の小さい順）に上から並べる。
@@ -19,7 +19,7 @@ export const optionsHtml = (kind, i, attr) =>
   optionOrder(kind, i)
     .map((j) => {
       const o = questionOf(kind, i).options[j];
-      return `<button class="opt" ${attr}="${j}"><span class="oe" aria-hidden="true">${o.e || ''}</span><span class="ot">${esc(o.text)}</span></button>`;
+      return `<button class="opt" ${attr}="${j}"><span class="oe" aria-hidden="true">${o.e || ''}</span><span class="ot jp">${jp(o.text)}</span></button>`;
     })
     .join('');
 // 質問の下の一言：「もしいたら」で答えてね（あれば）／最初の2問だけ「いちばん近いものでOK」
@@ -133,7 +133,7 @@ function viewStep() {
   render(`
     <div class="progress ${s.mode}" aria-hidden="true"><i style="width:${((n - 1) / total) * 100}%"></i></div>
     <div class="qhead"><span>${esc(where)}　${n} / ${total}</span>${s.pos > 0 ? '<button data-back>← もどる</button>' : '<a href="#/">やめる</a>'}</div>
-    <h2 class="qtext">${esc(q.text)}</h2>
+    <h2 class="qtext jp">${jp(q.text)}</h2>
     ${questionHint(q, s.offset + s.pos < 2)}
     <div class="opts">${opts}</div>`);
   if (s.mode === 'quick' && QUICK_CHEERS[s.pos]) toast(QUICK_CHEERS[s.pos]);

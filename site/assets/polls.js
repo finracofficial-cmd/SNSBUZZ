@@ -4,7 +4,7 @@
 import { TYPES } from './data.js';
 import { weekIdOf, shiftWeek, weeksBetween } from './clock.js';
 import { POLL_START, pollOf } from './polldata.js';
-import { app, esc, store, api, toast } from './ui.js';
+import { app, esc, jp, store, api, toast } from './ui.js';
 
 export { pollOf };
 
@@ -46,10 +46,10 @@ export function pollCard() {
   const voted = store.get(`poll:${week}`, null);
   return `<section class="card poll" data-poll="${week}">
     <p class="lead">今週のお題 <small>毎週月曜に新しい1問</small></p>
-    <h2 class="poll-q">${esc(poll.q)}</h2>
+    <h2 class="poll-q jp">${jp(poll.q)}</h2>
     <div class="poll-body">${Number.isInteger(voted)
       ? '<p class="hint">集計を読みこみ中…</p>'
-      : `<div class="poll-opts">${poll.choices.map((c, k) => `<button class="poll-opt" data-vote="${k}">${esc(c)}</button>`).join('')}</div>`}</div>
+      : `<div class="poll-opts">${poll.choices.map((c, k) => `<button class="poll-opt jp" data-vote="${k}">${jp(c)}</button>`).join('')}</div>`}</div>
     ${pollStarted(lastWeek()) ? `<a class="linkish" href="#/w/${lastWeek()}">先週のお題の結果を見る</a>` : ''}
   </section>`;
 }

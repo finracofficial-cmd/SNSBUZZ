@@ -359,3 +359,23 @@ test('グループの役割：n人なら min(n, 7) 個の役を、同じ人に2�
   }
   assert.deepEqual(groupRoles([]), []);
 });
+
+test('日本語の改行：文節の切れ目だけで折り返し、単語や「3日」「連絡先」の途中では切らない', async () => {
+  const { phrases } = await import('../site/assets/jptext.js');
+  assert.deepEqual(phrases('帰るまでに全員と連絡先を交換'), ['帰るまでに', '全員と', '連絡先を', '交換']);
+  assert.deepEqual(phrases('あとで「誰？」と聞く'), ['あとで', '「誰？」と', '聞く']);
+  assert.deepEqual(phrases('考えているうちに3日が経ち、既読だけが光っている。').join('|').includes('3日が'), true);
+  assert.ok(!phrases('考えているうちに3日が経ち、既読だけが光っている。').some((p) => p.endsWith('経')), '「経ち」を切らない');
+  assert.deepEqual(phrases('気が向いたときに、ゆるく楽しむ'), ['気が', '向いたときに、', 'ゆるく', '楽しむ']);
+  // どんな文でも、つなげると元の文に戻る
+  const { QUESTIONS, PARAM_QUESTIONS, TYPES } = await import('../site/assets/data.js');
+  for (const s of [...QUESTIONS, ...PARAM_QUESTIONS].flatMap((q) => [q.text, ...q.options.map((o) => o.text)]).concat(TYPES.flatMap((t) => [t.praise, t.roast, ...t.ponkotsu]))) {
+    assert.equal(phrases(s).join(''), s);
+    const ps = phrases(s);
+    ps.slice(1).forEach((p, k) => {
+      assert.ok(!/^[」』）、。！？ーぁぃぅぇぉっゃゅょ]/.test(p), `閉じかっこ・句読点・小さい字で始まる行: ${ps.join('/')}`);
+      // ひらがなで始まってよいのは、前が句読点で終わるときだけ（助詞や送りがなの前では切らない）
+      if (/^[ぁ-ゖ]/.test(p)) assert.match(ps[k], /[、。！？!?]$/, `助詞・送りがなの前で切っている: ${ps.join('/')}`);
+    });
+  }
+});

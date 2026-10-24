@@ -550,3 +550,21 @@ table.kpi td small { color: var(--sub); font-size: 10px; margin-left: 2px; }
 @keyframes calc-done { to { color: var(--ink); } }
 .confirm-text { font-weight: 700; line-height: 1.6; margin: 4px 0 14px; }
 .modal .sheet:focus { outline: none; }
+
+/* 日本語の改行：文節の切れ目（<wbr>）でだけ折り返す。長すぎる語だけは、はみ出す前にどこでも折る */
+.jp { word-break: keep-all; overflow-wrap: anywhere; }
+.opt .ot, .pk-main, .praise { text-wrap: balance; }
+
+/* 結果のいちばん上：ポンコツなところ → だから愛される */
+.ponkotsu-card, .charm-card { background: var(--paper); border: 2px solid var(--line); border-radius: var(--radius); padding: 16px 18px; margin: 14px 0; text-align: left; }
+.ponkotsu-card { border-color: var(--type-deep); box-shadow: 0 4px 0 var(--type); }
+.pk-head { margin: 0 0 8px; font-size: 15px; font-weight: 800; color: var(--type-text); }
+.pk-head.love { color: #B83B6E; }
+.pk-main { margin: 0 0 12px; font-size: 19px; font-weight: 800; line-height: 1.6; }
+.pk-main span { background: linear-gradient(transparent 55%, var(--marker) 55%); }
+.pk-list, .charm-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.pk-list li, .charm-list li { position: relative; padding: 8px 12px 8px 36px; border-radius: 12px; background: var(--bg); font-size: 15px; line-height: 1.5; }
+.pk-list li::before, .charm-list li::before { position: absolute; left: 11px; top: 8px; font-size: 15px; }
+.pk-list li::before { content: '💦'; content: '💦' / ''; }
+.charm-list li::before { content: '♡'; content: '♡' / ''; color: #B83B6E; font-weight: 800; }
+.charm-card .praise { margin: 0 0 10px; font-size: 16px; font-weight: 700; text-align: left; }
