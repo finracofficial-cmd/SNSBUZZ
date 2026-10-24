@@ -28,5 +28,6 @@ export async function onRequestGet({ request, env }) {
   if (!REF.test(r)) return json({ error: 'bad' }, 400);
   if (!env.DB) return json({ n: 0 });
   const row = await env.DB.prepare('SELECT COUNT(*) AS n FROM (SELECT 1 FROM refs WHERE ref = ?1 LIMIT 99)').bind(r).first();
-  return json({ n: row?.n || 0 }, 200, { 'cache-control': 'private, max-age=30' });
+  // 友達が診断した直後に開き直しても、古い人数が出ないように、キャッシュしない
+  return json({ n: row?.n || 0 }, 200, { 'cache-control': 'no-store' });
 }

@@ -187,9 +187,9 @@ function abTable(c) {
       // 価格のテストは、支払いの率ではなく、表示1回あたりの売上で決める
       const revVerdict = () => `表示1回あたりの売上：${judge(a && b ? revenueTest(a.rev, a.n.paid, a.n[base], b.rev, b.n.paid, b.n[base]) : null)}`;
       const verdicts = Object.hasOwn(SERVER_EXPERIMENTS, name) ? [revVerdict()] : outs.filter((st) => st !== 'cta').map(verdict);
-      return `<h3>${esc(name)}${name === 'price' ? '（週ごとに交互）' : ''}</h3><table class="kpi"><tr><th>案</th>${steps.map((st) => `<th>${STEP_NAMES[st]}</th>`).join('')}${buying ? '<th>売上</th><th>表示あたり</th>' : ''}</tr>${rows
+      return `<h3>${esc(name)}${name === 'price' ? '（週ごとに交互）' : ''}</h3><div class="kpi-scroll"><table class="kpi ab"><tr><th>案</th>${steps.map((st) => `<th>${STEP_NAMES[st]}</th>`).join('')}${buying ? '<th>売上</th><th>表示あたり</th>' : ''}</tr>${rows
         .map((r) => `<tr><td>${esc(r.v)}</td>${steps.map((st, k) => `<td>${r.n[st]}${k ? `<small>（${pct(r.n[st], r.n[base])}）</small>` : ''}</td>`).join('')}${buying ? `<td>${yen(r.rev)}</td><td>${r.n[base] ? `${(r.rev / r.n[base]).toFixed(1)}円` : '—'}</td>` : ''}</tr>`)
-        .join('')}</table><p class="hint">${verdicts.join('／')}。${reached ? '' : `判定は、各案の「${STEP_NAMES[base]}」が${target.toLocaleString('ja-JP')}人に達してから（いま ${rows.map((r) => r.n[base]).join('・')}人）。途中で止めて結論を出さないでください。`}${name === 'price' ? '週ごとの波（テスト期間・連休）をならすため、最低4週（各案2週）は続けてください。' : ''}</p>`;
+        .join('')}</table></div><p class="hint">${verdicts.join('／')}。${reached ? '' : `判定は、各案の「${STEP_NAMES[base]}」が${target.toLocaleString('ja-JP')}人に達してから（いま ${rows.map((r) => r.n[base]).join('・')}人）。途中で止めて結論を出さないでください。`}${name === 'price' ? '週ごとの波（テスト期間・連休）をならすため、最低4週（各案2週）は続けてください。' : ''}</p>`;
     })
     .join('');
 }

@@ -187,6 +187,37 @@ await a.waitForSelector('#join', { timeout: 8000 });
 check((await a.locator('.member').count()) === 0, 'グループから抜けられない');
 await a.screenshot({ path: path.join(outDir, 'group.png'), fullPage: true });
 
+// 8. ふたりの相性・完全版：コードで開いた端末では、だれとの相性でも本文がサーバーから届く（名前が入る）
+await a.goto(`${base}/#/pair/3~-5_-1_3_5/f~9_9_9_9/${encodeURIComponent('ゆう')}/${encodeURIComponent('あお')}`);
+await a.waitForFunction(() => document.querySelectorAll('#pair-premium .pp-item').length >= 4 && !document.querySelector('#pair-premium .mosaic'), null, { timeout: 8000 });
+const pairText = await a.textContent('#pair-premium');
+check(pairText.includes('ゆう') && pairText.includes('あお') && !/\{(pos|neg)\}/.test(pairText), 'ふたりの相性・完全版に名前が入っていない');
+await a.screenshot({ path: path.join(outDir, 'pair-premium.png'), fullPage: true });
+
+// 9. 紹介：シェアURLから来た人が初めて診断を終えると、シェアした人の人数が1つ増える（本物の D1 で）
+{
+  const s = await phone();
+  await s.goto(`${base}/#/q`);
+  await answer(s, 12, () => 1);
+  await s.waitForSelector('.share-row [data-copy]', { timeout: 8000 });
+  const shared = new URL((await s.getAttribute('.share-row [data-copy]', 'data-copy')).split('\n').pop());
+  const r = shared.searchParams.get('r');
+  const before = (await (await fetch(`${base}/api/ref?r=${r}`)).json()).n;
+  const f = await phone();
+  await f.goto(`${base}${shared.pathname}${shared.search}`);
+  await f.waitForSelector('.invite', { timeout: 8000 });
+  await f.click('.invite [data-go="#/q"]');
+  await answer(f, 12, () => 2);
+  await f.waitForSelector('.pairbox', { timeout: 8000 });
+  await f.waitForTimeout(500);
+  const after = (await (await fetch(`${base}/api/ref?r=${r}`)).json()).n;
+  check(after === before + 1, `紹介が数えられていない: ${before} → ${after}`);
+  await s.reload();
+  await s.waitForFunction((n) => document.querySelector('[data-ref-count]')?.textContent.includes(`${n}人`), after, { timeout: 8000 });
+  await s.context().close();
+  await f.context().close();
+}
+
 // 7. 運営用のKPI画面（A/Bテストの表示数も入っている）
 await a.goto(`${base}/#/admin`);
 await a.fill('#kpi-token', 'dev');
@@ -195,6 +226,7 @@ await a.waitForSelector('table.kpi', { timeout: 8000 });
 check((await a.locator('table.kpi').count()) >= 5, 'KPI画面の表が足りない');
 const abExposure = await a.evaluate(() => [...document.querySelectorAll('table.kpi td')].some((td) => td.textContent === 'amount' || td.textContent === 'specific'));
 check(abExposure, 'A/Bテストの表が出ていない');
+check((await a.textContent('main, body')).includes('紹介で初めて診断した友達'), 'KPI画面に紹介の数が出ていない');
 await a.screenshot({ path: path.join(outDir, 'admin.png'), fullPage: true });
 
 await browser.close();

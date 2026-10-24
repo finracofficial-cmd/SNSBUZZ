@@ -619,3 +619,7 @@ table.kpi.money td:last-child { overflow-wrap: anywhere; }
 .biz-menu dt { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 10px; align-items: baseline; margin-top: 14px; font-weight: 800; }
 .biz-menu dt span { flex: 0 0 auto; color: var(--accent); font-size: 14px; }
 .biz-menu dd { margin: 4px 0 0; }
+
+/* KPI画面のA/Bの表は列が多いので、横にスクロールさせる */
+.kpi-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+table.kpi.ab td, table.kpi.ab th { white-space: nowrap; }
