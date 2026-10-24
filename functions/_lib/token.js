@@ -85,17 +85,42 @@ export async function cookieHeaderFor(env, request, token) {
 // SELLER_READY=1 は、特定商取引法の表記（config.js の seller）を本物に書きかえたあとで入れる。入れるまでは販売しない
 export const premiumEnabled = (env) => !!(env.STRIPE_SECRET_KEY && env.STRIPE_PRICE_ID && env.PREMIUM_SECRET && env.SELLER_READY === '1');
 
-// 販売するプラン。「ふたり用」は STRIPE_PRICE_ID_DUO があるときだけ出す
+// 価格のテスト。PREMIUM_PRICE_ALT（例 490）と STRIPE_PRICE_ID_ALT を入れると、じぶん用の価格を
+// 1週間ごと（日本時間の月曜0時で切りかえ）に、いつもの価格（base）とテストの価格（alt）で交互にする。
+// 人ごとではなく週ごとにするのは、同じ週ならだれが見ても同じ価格にするため（友だち同士で値段がちがう、が起きない）
+const HOUR = 3600 * 1000;
+const WEEK = 7 * 24 * HOUR;
+// 1970-01-01 は木曜なので、3日ずらすと月曜はじまりの週になる
+export const weekOf = (now = Date.now()) => Math.floor((now + 9 * HOUR + 3 * 24 * HOUR) / WEEK);
+export const priceArm = (env, now = Date.now()) =>
+  env.PREMIUM_PRICE_ALT && env.STRIPE_PRICE_ID_ALT ? (weekOf(now) % 2 ? 'alt' : 'base') : '';
+
+// 販売するプラン（Stripe の価格IDつき）。「ふたり用」は STRIPE_PRICE_ID_DUO があるときだけ出す
 // price は画面に出す価格。決済のときに Stripe の価格と同じか確かめる（checkout.js）
-export function plansOf(env) {
-  const plans = [{ id: 'solo', price: Number(env.PREMIUM_PRICE || 390), priceId: env.STRIPE_PRICE_ID, name: 'じぶん用' }];
+function plansWithIds(env, now = Date.now()) {
+  const alt = priceArm(env, now) === 'alt';
+  const plans = [{
+    id: 'solo',
+    price: Number((alt ? env.PREMIUM_PRICE_ALT : env.PREMIUM_PRICE) || 390),
+    priceId: alt ? env.STRIPE_PRICE_ID_ALT : env.STRIPE_PRICE_ID,
+    name: 'じぶん用',
+  }];
   if (env.STRIPE_PRICE_ID_DUO) {
     plans.push({ id: 'duo', price: Number(env.PREMIUM_PRICE_DUO || 590), priceId: env.STRIPE_PRICE_ID_DUO, name: 'ふたり用' });
   }
-  return plans.map(({ priceId, ...rest }) => ({ ...rest, available: !!priceId }));
+  return plans;
 }
+export const plansOf = (env, now = Date.now()) => plansWithIds(env, now).map(({ priceId, ...rest }) => ({ ...rest, available: !!priceId }));
 
-export const priceIdOf = (env, plan) => (plan === 'duo' ? env.STRIPE_PRICE_ID_DUO : env.STRIPE_PRICE_ID);
+// 決済するプラン。画面に出ていた価格（shown）が、いまの価格とちがうときは、2時間前の価格と同じならそちらで売る
+// （週の切りかわりの直前に開いた画面から買う人のため）。どちらともちがえば null（画面を開き直してもらう）
+export function checkoutPlanOf(env, id, shown, now = Date.now()) {
+  const find = (t) => plansWithIds(env, t).find((p) => p.id === id);
+  const cur = find(now);
+  if (!cur?.priceId || shown == null || shown === cur.price) return cur?.priceId ? { ...cur, arm: priceArm(env, now) } : null;
+  const before = find(now - 2 * HOUR);
+  return before?.priceId && shown === before.price ? { ...before, arm: priceArm(env, now - 2 * HOUR) } : null;
+}
 
 // 使える支払い方法（Stripe の payment_method_types）。STRIPE_PAYMENT_METHODS="card,paypay" のように指定する。
 // カードには Apple Pay・Google Pay がふくまれる。コンビニ・振込のように後から支払う方法は使わない

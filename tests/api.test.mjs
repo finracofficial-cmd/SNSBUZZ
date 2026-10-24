@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { createHmac } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
-import { issueToken, verifyToken, accessOf } from '../functions/_lib/token.js';
+import { issueToken, verifyToken, accessOf, weekOf, priceArm, checkoutPlanOf } from '../functions/_lib/token.js';
 import { claimIdOf } from '../functions/_lib/purchase.js';
 import { onRequestGet as premiumGet } from '../functions/api/premium/index.js';
 import { onRequestGet as statusGet } from '../functions/api/premium/status.js';
@@ -174,6 +174,47 @@ test('決済の開始：Stripeの価格と画面の価格がちがえば止め�
     assert.equal(c3.status, 503);
     assert.equal((await c3.json()).error, 'price');
     assert.equal((await checkoutPost({ request: post('/api/checkout', { plan: 'duo' }), env: { ...env, PREMIUM_PRICE_DUO: '690' } })).status, 200);
+  } finally {
+    stripe.restore();
+  }
+});
+
+test('価格のテスト：週ごと（日本時間の月曜0時）に交互。切りかわりの2時間は前の価格でも売る。案は売った価格で付ける', async () => {
+  const env = { ...SECRET, ...STRIPE, PREMIUM_PRICE_ALT: '490', STRIPE_PRICE_ID_ALT: 'price_alt' };
+  assert.equal(priceArm({ ...SECRET, ...STRIPE }), '', '設定がなければテストしない');
+  // 2026-10-25（日）23:59 JST と 2026-10-26（月）0:00 JST は別の週。その前後の週はそれぞれ同じ案
+  const sunday = Date.parse('2026-10-25T23:59:00+09:00');
+  const monday = Date.parse('2026-10-26T00:00:00+09:00');
+  assert.equal(weekOf(monday) - weekOf(sunday), 1);
+  assert.equal(weekOf(Date.parse('2026-10-19T00:00:00+09:00')), weekOf(sunday), '月曜0時から日曜までは同じ週');
+  assert.notEqual(priceArm(env, sunday), priceArm(env, monday));
+  assert.equal(priceArm(env, sunday), priceArm(env, monday + 7 * 86400e3));
+  const altAt = priceArm(env, monday) === 'alt' ? monday : sunday;
+  const baseAt = altAt === monday ? sunday : monday;
+  assert.deepEqual(checkoutPlanOf(env, 'solo', 490, altAt + 3600e3), { id: 'solo', price: 490, priceId: 'price_alt', name: 'じぶん用', arm: 'alt' });
+  assert.equal(checkoutPlanOf(env, 'solo', 390, baseAt + 3600e3).priceId, 'price_solo');
+  // 切りかわりから1時間後：前の週の価格の画面からでも買える。3時間後はもう買えない（開き直してもらう）
+  const switchAt = altAt === monday ? monday : monday + 7 * 86400e3;
+  const prev = priceArm(env, switchAt - 60e3) === 'alt' ? 490 : 390;
+  assert.equal(checkoutPlanOf(env, 'solo', prev, switchAt + 3600e3).price, prev);
+  assert.equal(checkoutPlanOf(env, 'solo', prev, switchAt + 3 * 3600e3), null);
+  assert.equal(checkoutPlanOf(env, 'solo', 1, switchAt), null);
+  assert.equal(checkoutPlanOf(env, 'duo', 590, altAt).priceId, 'price_duo', 'ふたり用はテストしない');
+
+  const stripe = stubStripe({}, { price_solo: 390, price_alt: 490, price_duo: 590 });
+  try {
+    const s = await (await statusGet({ env })).json();
+    const nowPrice = s.plans[0].price;
+    assert.equal(nowPrice, s.arm === 'alt' ? 490 : 390);
+    const ok = await checkoutPost({ request: post('/api/checkout', { plan: 'solo', price: nowPrice, ab: 'autopay:on,price:base,price:alt' }), env });
+    assert.equal(ok.status, 200);
+    const form = new URLSearchParams(stripe.sent.at(-1).body);
+    assert.equal(form.get('line_items[0][price]'), s.arm === 'alt' ? 'price_alt' : 'price_solo');
+    assert.equal(form.get('metadata[ab]'), `autopay:on,price:${s.arm}`, '価格の案はブラウザの申告ではなく、売った価格で付ける');
+    const changed = await checkoutPost({ request: post('/api/checkout', { plan: 'solo', price: 999 }), env });
+    assert.equal(changed.status, 409);
+    assert.equal((await changed.json()).error, 'price_changed');
+    assert.equal((await checkoutPost({ request: post('/api/checkout', { plan: 'duo', price: 999 }), env: { ...env, STRIPE_PRICE_ID_DUO: '' } })).status, 400, '売っていないプランは plan');
   } finally {
     stripe.restore();
   }
@@ -369,6 +410,9 @@ test('計測：許可したキーだけ数え、日別にも記録する。回�
     ['__proto__', 'x', 400],
     ['ab', 'paybar:amount:exposure', 204],
     ['ab', 'autopay:off:checkout', 204],
+    ['ab', 'price:alt:exposure', 204],
+    ['ab', 'price:alt:paid', 400],
+    ['ab', 'price:half:exposure', 400],
     ['ab', 'paybar:amount:paid', 400],
     ['ab', 'paybar:nope:exposure', 400],
     ['ab', 'hasOwnProperty:x:exposure', 400],

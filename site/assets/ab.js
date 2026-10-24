@@ -1,6 +1,6 @@
 // A/Bテストの割り当てと計測。端末ごとに一度だけ決めて、ずっと同じものを見せる。
 // 計測は端末ごとに各段階1回まで（同じ人が何度レポートを開いても、表示は1回と数える）。
-import { EXPERIMENTS, metricsOf } from './experiments.js';
+import { EXPERIMENTS, SERVER_EXPERIMENTS, metricsOf } from './experiments.js';
 import { store, track } from './ui.js';
 
 export function variant(name) {
@@ -13,13 +13,26 @@ export function variant(name) {
   return v;
 }
 
-// 段階は、その段階を見る実験にだけ送る。送った印は実験ごと（あとから足した実験も、正しく1回目を数える）
+// サーバーが決めた案（価格のテストの、今週の案）。/api/premium/status の arm を premium.js が入れる
+const serverArms = {};
+export const setServerArm = (name, arm) => {
+  if (SERVER_EXPERIMENTS[name]?.includes(arm)) serverArms[name] = arm;
+};
+
+// 段階は、その段階を見る実験にだけ送る。送った印は実験ごと（あとから足した実験も、正しく1回目を数える）。
+// サーバーが決める実験は週で案が変わるので、印も案ごと（先週 base で見た人が、今週 alt で見たら alt でも1回数える）
 export function abTrack(step) {
   Object.keys(EXPERIMENTS)
     .filter((name) => metricsOf(name).includes(step) && !store.get(`ab:sent:${name}:${step}`, false))
     .forEach((name) => {
       store.set(`ab:sent:${name}:${step}`, true);
       track('ab', `${name}:${variant(name)}:${step}`);
+    });
+  Object.entries(serverArms)
+    .filter(([name, arm]) => metricsOf(name).includes(step) && step !== 'paid' && !store.get(`ab:sent:${name}:${arm}:${step}`, false))
+    .forEach(([name, arm]) => {
+      store.set(`ab:sent:${name}:${arm}:${step}`, true);
+      track('ab', `${name}:${arm}:${step}`);
     });
 }
 

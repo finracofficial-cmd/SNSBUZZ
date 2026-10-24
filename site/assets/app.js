@@ -34,6 +34,7 @@ import {
   adoptToken,
   hasPremium,
   maybeShowAfterPurchase,
+  maybeShowCheckoutLeft,
   watchClaim,
   premiumStatus,
   priceOf,
@@ -176,7 +177,7 @@ async function viewLegal() {
         <dt>販売事業者</dt><dd>${esc(s.name)}</dd>
         <dt>所在地・電話番号</dt><dd>${esc(s.address)}</dd>
         <dt>お問い合わせ</dt><dd>${esc(s.contact)}</dd>
-        <dt>販売価格</dt><dd>完全版（じぶん用）${priceOf(status)}円（税込）${duo ? `、完全版（ふたり用）${duo.price}円（税込）` : ''}</dd>
+        <dt>販売価格</dt><dd>完全版（じぶん用）${priceOf(status)}円（税込）${duo ? `、完全版（ふたり用）${duo.price}円（税込）` : ''}${status.arm ? '。価格は週ごとに変わることがあります（月曜0時に切りかわります）。お支払いの前の確認画面に出た価格でご購入いただけます' : ''}</dd>
         <dt>商品代金以外の費用</dt><dd>インターネット接続にかかる通信料</dd>
         <dt>支払方法</dt><dd>${esc(methodsText(status))}（決済サービス Stripe を使います）</dd>
         <dt>支払時期</dt><dd>ご注文時（決済画面でお支払いを確定した時点）に決済されます</dd>
@@ -232,6 +233,8 @@ async function route() {
   cancelQuiz();
   try {
     await routeInner();
+    // 決済をやめて戻ってきた直後なら、迷った理由を1回だけ聞く
+    if (document.body.dataset.page !== 'thanks' && !quizActive()) maybeShowCheckoutLeft();
   } catch {
     // 壊れたリンクなどで描けなかったときは、トップに戻す
     viewHome();

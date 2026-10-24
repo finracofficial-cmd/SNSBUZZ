@@ -382,6 +382,46 @@ await fresh.context().close();
   await p.context().close();
 }
 
+// ---------- 決済をやめて戻ってきた（迷った理由）と、価格のテスト中の表示 ----------
+{
+  const p = await phone();
+  await p.route('**/api/premium/status', (r) =>
+    r.fulfill({ json: { enabled: true, arm: 'alt', methods: ['card', 'paypay'], plans: [{ id: 'solo', price: 490, name: 'じぶん用', available: true }, { id: 'duo', price: 590, name: 'ふたり用', available: true }] } }),
+  );
+  await p.goto(`${base}/`);
+  const detail = await a.evaluate(() => localStorage.getItem('pz:mineDetail'));
+  const back = await a.evaluate(() => {
+    const m = JSON.parse(localStorage.getItem('pz:mineDetail'));
+    return `#/r/${m.code}/${m.shareId}`;
+  });
+  await p.evaluate(([d, h]) => {
+    localStorage.setItem('pz:mineDetail', d);
+    localStorage.setItem('pz:mine', d);
+    localStorage.setItem('pz:returnHash', JSON.stringify(h));
+  }, [detail, back]);
+  await p.goto(`${base}/thanks/?canceled=1`);
+  await p.waitForSelector('.modal:not([hidden]) .left-reasons', { timeout: 5000 });
+  check((await p.locator('.left-reasons .opt').count()) === 5, '迷った理由が5つ出ない');
+  check(p.url().includes('#/r/'), `やめたあと元のページに戻らない: ${p.url()}`);
+  await p.click('[data-left="price"]');
+  const priceAnswer = await p.textContent('#left-answer');
+  check(priceAnswer.includes('490円の買い切り') && priceAnswer.includes('1人295円'), `「高い」への答えがおかしい: ${priceAnswer}`);
+  await shot(p, '18-checkout-left', false);
+  await p.click('[data-left="method"]');
+  check((await p.textContent('#left-answer')).includes('PayPay'), '「払い方」への答えに PayPay が出ない');
+  await p.click('[data-left-again]');
+  await p.waitForSelector('.modal:not([hidden]) .includes', { timeout: 5000 });
+  check((await p.textContent('.modal:not([hidden]) .plans')).includes('490円'), '価格のテストの価格が購入案内に出ない');
+  // 2回目は出さない
+  await p.reload();
+  await p.waitForTimeout(800);
+  check(!(await p.$('.modal:not([hidden]) .left-reasons')), '迷った理由が2回出た');
+  await p.goto(`${base}/#/legal`);
+  await p.waitForSelector('.facts', { timeout: 5000 });
+  check((await p.textContent('.facts')).includes('週ごとに変わることがあります'), '価格のテスト中なのに、特商法の表記に価格が変わることを書いていない');
+  await p.context().close();
+}
+
 // ---------- 画面幅ごとの横はみ出し ----------
 const reportHash = await a.evaluate(() => {
   const m = JSON.parse(localStorage.getItem('pz:mineDetail'));

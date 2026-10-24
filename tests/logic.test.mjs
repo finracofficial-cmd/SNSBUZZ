@@ -257,6 +257,12 @@ test('A/Bテスト：ブラウザとサーバーの定義が同じ。z検定の 
   assert.deepEqual(site.EXPERIMENTS, server.EXPERIMENTS);
   assert.deepEqual(site.AB_STEPS, server.AB_STEPS);
   assert.deepEqual(site.METRICS, server.METRICS);
+  assert.deepEqual(site.SERVER_EXPERIMENTS, server.SERVER_EXPERIMENTS);
+  // 価格のテスト：同じ売上なら差なし、表示あたりの売上が大きくちがえば差あり、支払い0件は判断しない
+  assert.equal(site.revenueTest(0, 0, 1000, 3900, 10, 1000), null);
+  assert.ok(site.revenueTest(11700, 30, 1000, 11760, 24, 1000) > 0.5, '390円×30件 と 490円×24件 はほぼ同じ');
+  const pr = site.revenueTest(11700, 30, 5000, 29400, 60, 5000);
+  assert.ok(pr < 0.01, `p=${pr}`);
   Object.keys(site.EXPERIMENTS).forEach((name) => assert.ok(site.metricsOf(name).every((st) => site.AB_STEPS.includes(st)), name));
   assert.equal(site.twoProportion(1, 10, 2, 10), null, '少なすぎるときは判断しない');
   assert.ok(Math.abs(site.twoProportion(50, 100, 50, 100) - 1) < 1e-6, '同じ割合なら p=1');

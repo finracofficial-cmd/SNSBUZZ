@@ -1,6 +1,6 @@
 // POST /api/event {k, v} — 診断開始・完了・シェア・流入を数えるだけ。個人を識別する情報は受け取らない。
 import { rateLimited, crossSite } from '../_lib/http.js';
-import { EXPERIMENTS, metricsOf } from '../_lib/experiments.js';
+import { ALL_EXPERIMENTS, metricsOf } from '../_lib/experiments.js';
 
 const SHARE = [
   'x', 'line', 'link', 'native', 'invite', 'quiz',
@@ -27,11 +27,14 @@ const ALLOWED = {
   // トップの1問目のカードから始めた
   lp: (v) => (v === 'q1' ? v : null),
   // 支払い完了とコード利用はサーバー側（unlock / redeem）で数える
-  premium: (v) => (v === 'checkout' ? v : null),
+  // checkout＝決済画面へ進んだ、cancel＝決済の画面で「戻る」を押した
+  premium: (v) => (['checkout', 'cancel'].includes(v) ? v : null),
+  // 決済をやめた人が選んだ、迷った理由
+  left: (v) => (['price', 'method', 'guardian', 'content', 'later'].includes(v) ? v : null),
   // A/Bテスト「実験:案:段階」。支払い完了（paid）はサーバー側で数える
   ab: (v) => {
     const [name, variant, step] = v.split(':');
-    return Object.hasOwn(EXPERIMENTS, name) && EXPERIMENTS[name].includes(variant) && metricsOf(name).includes(step) && step !== 'paid' ? v : null;
+    return Object.hasOwn(ALL_EXPERIMENTS, name) && ALL_EXPERIMENTS[name].includes(variant) && metricsOf(name).includes(step) && step !== 'paid' ? v : null;
   },
 };
 

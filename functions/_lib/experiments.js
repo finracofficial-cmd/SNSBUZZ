@@ -9,6 +9,10 @@ export const EXPERIMENTS = {
   autopay: ['on', 'off'],
   calc: ['on', 'off'],
 };
+// サーバーが案を決める実験（端末ではくじを引かない）。
+//   price … じぶん用の価格を週ごとに交互にする（functions/_lib/token.js の priceArm）。件数ではなく、表示1回あたりの売上でくらべる
+export const SERVER_EXPERIMENTS = { price: ['base', 'alt'] };
+export const ALL_EXPERIMENTS = { ...EXPERIMENTS, ...SERVER_EXPERIMENTS };
 export const AB_STEPS = ['exposure', 'cta', 'checkout', 'paid', 'result', 'share', 'agree', 'detail'];
 // 実験ごとに見る段階（最初が分母）。書いていない実験は購入の段階で見る
 export const METRICS = { calc: ['result', 'share', 'agree', 'detail'] };

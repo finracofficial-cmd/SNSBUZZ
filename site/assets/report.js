@@ -267,7 +267,8 @@ export async function viewReport(r, shareId) {
   );
 
   if (!prem && !failed) {
-    abTrack('exposure');
+    // 価格のテストの今週の案が分かってから数える（販売状況は、このページの上で読みこみ済み）
+    premiumStatus().then(() => abTrack('exposure'));
     // 第1章を読み終えたあたりで、一度だけ購入の案内を出す（自動で出すのは1回まで。A/Bテスト autopay で出さない案もある）
     const ch2 = app.querySelector('#ch2');
     if (ch2 && 'IntersectionObserver' in window && variant('autopay') === 'on') {

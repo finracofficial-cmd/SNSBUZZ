@@ -5,7 +5,7 @@
 //   ・A/Bテスト：案ごとの表示・購入案内・決済・支払い完了と、差があるかの目安（2つの割合の z 検定）
 //   ・タイプ別の完了数
 import { TYPES } from './data.js';
-import { EXPERIMENTS, twoProportion, metricsOf } from './experiments.js';
+import { ALL_EXPERIMENTS, SERVER_EXPERIMENTS, twoProportion, revenueTest, metricsOf } from './experiments.js';
 import { esc, render, api, brand } from './ui.js';
 
 const pct = (a, b) => (b ? `${((a / b) * 100).toFixed(1)}%` : '—');
@@ -109,6 +109,7 @@ function bindSimulator() {
   update();
 }
 
+const LEFT_NAMES = [['price', '高い'], ['method', '払い方'], ['guardian', 'おうちの人'], ['content', '中身'], ['later', 'いまはいい']];
 function funnel(c) {
   // [名前, 回数, くらべる段階の番号]（購入案内の2行は、どちらも「くわしい診断の完了」とくらべる）
   const steps = [
@@ -124,7 +125,8 @@ function funnel(c) {
   return `<table class="kpi"><tr><th>段階</th><th>回数</th><th>割合</th></tr>${steps
     .map(([name, n, base]) => `<tr><td>${name}</td><td>${n || 0}</td><td>${base == null ? '' : `${pct(n || 0, steps[base][1] || 0)}<small>／${steps[base][0].replace(/の(開始|完了)$/, '')}</small>`}</td></tr>`)
     .join('')}</table>
-    <p class="hint">くわしい診断の完了あたりの支払い完了：<b>${pct(c['premium:paid'] || 0, c['detail:done'] || 0)}</b>（目標 1.5%）／おうちの人へのお願い：${c['paywall:ask'] || 0}／コード利用：${Object.keys(c).filter((k) => k.startsWith('premium:code:')).reduce((s, k) => s + c[k], 0)}</p>`;
+    <p class="hint">くわしい診断の完了あたりの支払い完了：<b>${pct(c['premium:paid'] || 0, c['detail:done'] || 0)}</b>（目標 1.5%）／おうちの人へのお願い：${c['paywall:ask'] || 0}／コード利用：${Object.keys(c).filter((k) => k.startsWith('premium:code:')).reduce((s, k) => s + c[k], 0)}</p>
+    <p class="hint">決済の画面で「戻る」：${c['premium:cancel'] || 0}／迷った理由：${LEFT_NAMES.map(([k, n]) => `${n} ${c[`left:${k}`] || 0}`).join('・')}</p>`;
 }
 
 const sumDone = (c) => Object.keys(c).filter((k) => /^done:\d+$/.test(k)).reduce((s, k) => s + c[k], 0);
@@ -171,21 +173,23 @@ function daily(c) {
 const AB_TARGETS = { calc: 3500 };
 const STEP_NAMES = { exposure: '表示', cta: '購入案内', checkout: '決済へ', paid: '支払い', result: '結果', share: 'シェア', agree: 'わかる〜！', detail: 'くわしい診断へ' };
 function abTable(c) {
-  return Object.entries(EXPERIMENTS)
+  return Object.entries(ALL_EXPERIMENTS)
     .map(([name, variants]) => {
       const steps = metricsOf(name);
       const [base, ...outs] = steps;
-      const rows = variants.map((v) => ({ v, n: Object.fromEntries(steps.map((st) => [st, c[`ab:${name}:${v}:${st}`] || 0])) }));
+      const buying = steps.includes('paid');
+      const rows = variants.map((v) => ({ v, n: Object.fromEntries(steps.map((st) => [st, c[`ab:${name}:${v}:${st}`] || 0])), rev: c[`ab:${name}:${v}:rev`] || 0 }));
       const target = AB_TARGETS[name] || 5000;
       const reached = rows.every((r) => r.n[base] >= target);
       const [a, b] = rows;
-      const verdict = (st) => {
-        const p = a && b ? twoProportion(a.n[st], a.n[base], b.n[st], b.n[base]) : null;
-        return `${STEP_NAMES[st]}の率：${!reached ? 'まだ判定しない' : p == null ? '判断できない' : p < 0.05 ? `差がありそう（p=${p.toFixed(3)}）` : `差は見えない（p=${p.toFixed(3)}）`}`;
-      };
-      return `<h3>${esc(name)}</h3><table class="kpi"><tr><th>案</th>${steps.map((st) => `<th>${STEP_NAMES[st]}</th>`).join('')}</tr>${rows
-        .map((r) => `<tr><td>${esc(r.v)}</td>${steps.map((st, k) => `<td>${r.n[st]}${k ? `<small>（${pct(r.n[st], r.n[base])}）</small>` : ''}</td>`).join('')}</tr>`)
-        .join('')}</table><p class="hint">${outs.filter((st) => st !== 'cta').map(verdict).join('／')}。${reached ? '' : `判定は、各案の「${STEP_NAMES[base]}」が${target.toLocaleString('ja-JP')}人に達してから（いま ${rows.map((r) => r.n[base]).join('・')}人）。途中で止めて結論を出さないでください。`}</p>`;
+      const judge = (p) => (!reached ? 'まだ判定しない' : p == null ? '判断できない' : p < 0.05 ? `差がありそう（p=${p.toFixed(3)}）` : `差は見えない（p=${p.toFixed(3)}）`);
+      const verdict = (st) => `${STEP_NAMES[st]}の率：${judge(a && b ? twoProportion(a.n[st], a.n[base], b.n[st], b.n[base]) : null)}`;
+      // 価格のテストは、支払いの率ではなく、表示1回あたりの売上で決める
+      const revVerdict = () => `表示1回あたりの売上：${judge(a && b ? revenueTest(a.rev, a.n.paid, a.n[base], b.rev, b.n.paid, b.n[base]) : null)}`;
+      const verdicts = Object.hasOwn(SERVER_EXPERIMENTS, name) ? [revVerdict()] : outs.filter((st) => st !== 'cta').map(verdict);
+      return `<h3>${esc(name)}${name === 'price' ? '（週ごとに交互）' : ''}</h3><table class="kpi"><tr><th>案</th>${steps.map((st) => `<th>${STEP_NAMES[st]}</th>`).join('')}${buying ? '<th>売上</th><th>表示あたり</th>' : ''}</tr>${rows
+        .map((r) => `<tr><td>${esc(r.v)}</td>${steps.map((st, k) => `<td>${r.n[st]}${k ? `<small>（${pct(r.n[st], r.n[base])}）</small>` : ''}</td>`).join('')}${buying ? `<td>${yen(r.rev)}</td><td>${r.n[base] ? `${(r.rev / r.n[base]).toFixed(1)}円` : '—'}</td>` : ''}</tr>`)
+        .join('')}</table><p class="hint">${verdicts.join('／')}。${reached ? '' : `判定は、各案の「${STEP_NAMES[base]}」が${target.toLocaleString('ja-JP')}人に達してから（いま ${rows.map((r) => r.n[base]).join('・')}人）。途中で止めて結論を出さないでください。`}${name === 'price' ? '週ごとの波（テスト期間・連休）をならすため、最低4週（各案2週）は続けてください。' : ''}</p>`;
     })
     .join('');
 }

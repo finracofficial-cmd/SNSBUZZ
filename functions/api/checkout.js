@@ -1,8 +1,8 @@
-// POST /api/checkout {plan, index, rid, ab} — Stripe Checkout のセッションを作り、支払いページのURLとセッションIDを返す。
+// POST /api/checkout {plan, price, index, rid, ab} — Stripe Checkout のセッションを作り、支払いページのURLとセッションIDを返す。
 // rid は「おうちの人に払ってもらう」ときの受け取りID。支払い後、子どもの端末がこのIDで完全版を受け取る。
 // 画面に出している価格と、Stripe に登録した価格がちがうときは販売しない（表示と請求額のずれを防ぐ）。
 import { json, readJson, rateLimited, crossSite } from '../_lib/http.js';
-import { premiumEnabled, priceIdOf, plansOf, paymentMethodsOf } from '../_lib/token.js';
+import { premiumEnabled, checkoutPlanOf, paymentMethodsOf } from '../_lib/token.js';
 import { abTagsOf } from '../_lib/purchase.js';
 
 const priceCache = new Map();
@@ -27,9 +27,11 @@ export async function onRequestPost({ request, env }) {
   if (await rateLimited(env, request, 'checkout', 10)) return json({ error: 'rate' }, 429);
   const body = await readJson(request);
   const plan = body?.plan === 'duo' ? 'duo' : 'solo';
-  const priceId = priceIdOf(env, plan);
-  if (!priceId) return json({ error: 'plan' }, 400);
-  const shown = plansOf(env).find((p) => p.id === plan).price;
+  // price は画面に出ていた価格。価格のテストで週が切りかわったあとに、前の価格のままの画面から買われても、表示とちがう額は請求しない
+  const shownPrice = Number.isInteger(body?.price) ? body.price : null;
+  const chosen = checkoutPlanOf(env, plan, shownPrice);
+  if (!chosen) return checkoutPlanOf(env, plan, null) ? json({ error: 'price_changed' }, 409) : json({ error: 'plan' }, 400);
+  const { priceId, price: shown, arm } = chosen;
   const price = await stripePrice(env, priceId);
   if (!price || price.currency !== 'jpy' || price.unit_amount !== shown || price.active === false) {
     return json({ error: 'price' }, 503);
@@ -52,7 +54,9 @@ export async function onRequestPost({ request, env }) {
   paymentMethodsOf(env).forEach((m, i) => form.set(`payment_method_types[${i}]`, m));
   if (Number.isInteger(body?.index) && body.index >= 0 && body.index < 20) form.set('metadata[type]', String(body.index));
   if (rid) form.set('client_reference_id', rid);
-  const ab = abTagsOf(body?.ab);
+  // 価格のテストの案は、ブラウザの申告ではなく、実際に売った価格で付ける
+  const ab = abTagsOf(body?.ab).filter((tag) => !tag.startsWith('price:'));
+  if (arm) ab.push(`price:${arm}`);
   if (ab.length) form.set('metadata[ab]', ab.join(','));
   const res = await fetch('https://api.stripe.com/v1/checkout/sessions', {
     method: 'POST',

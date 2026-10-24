@@ -594,3 +594,11 @@ table.kpi.money td:last-child { overflow-wrap: anywhere; }
 .pp-fix span { display: block; font-size: 12px; font-weight: 800; color: #B83B6E; }
 .pp-play { margin: 0; padding-left: 1.2em; line-height: 1.7; }
 .pp-message { font-weight: 700; line-height: 1.8; }
+
+/* 決済をやめた人へ（迷った理由） */
+.left-reasons { gap: 8px; margin: 12px 0; }
+.left-reasons .opt { padding: 12px 14px; font-size: 15px; }
+.left-answer:empty { display: none; }
+.left-answer { margin: 4px 0 12px; padding: 14px; border-radius: 14px; background: var(--bg); }
+.left-answer p { margin: 0 0 10px; text-align: left; }
+.left-answer .includes { margin: 0 0 12px; }

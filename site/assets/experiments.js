@@ -9,6 +9,10 @@ export const EXPERIMENTS = {
   autopay: ['on', 'off'],
   calc: ['on', 'off'],
 };
+// サーバーが案を決める実験（端末ではくじを引かない）。
+//   price … じぶん用の価格を週ごとに交互にする（functions/_lib/token.js の priceArm）。件数ではなく、表示1回あたりの売上でくらべる
+export const SERVER_EXPERIMENTS = { price: ['base', 'alt'] };
+export const ALL_EXPERIMENTS = { ...EXPERIMENTS, ...SERVER_EXPERIMENTS };
 export const AB_STEPS = ['exposure', 'cta', 'checkout', 'paid', 'result', 'share', 'agree', 'detail'];
 // 実験ごとに見る段階（最初が分母）。書いていない実験は購入の段階で見る
 export const METRICS = { calc: ['result', 'share', 'agree', 'detail'] };
@@ -29,4 +33,18 @@ export function twoProportion(x1, n1, x2, n2) {
   if (!se) return null;
   const z = (x1 / n1 - x2 / n2) / se;
   return 2 * normalTail(Math.abs(z));
+}
+
+// 表示1回あたりの売上の差の z 検定（両側の p 値）。価格のテスト用（価格が上がると支払い率は下がるので、率ではなく売上でくらべる）。
+// 1回の表示の売上は「平均単価 × 買ったかどうか」とみなす。どちらかの表示が30未満、または支払いが0件のときは判断しない（null）
+export function revenueTest(rev1, paid1, n1, rev2, paid2, n2) {
+  if (n1 < 30 || n2 < 30 || !paid1 || !paid2) return null;
+  const v = (rev, paid, n) => {
+    const p = paid / n;
+    const a = rev / paid;
+    return (a * a * p * (1 - p)) / n;
+  };
+  const se = Math.sqrt(v(rev1, paid1, n1) + v(rev2, paid2, n2));
+  if (!se) return null;
+  return 2 * normalTail(Math.abs((rev1 / n1 - rev2 / n2) / se));
 }

@@ -9,7 +9,7 @@
 import { SITE } from './config.js';
 import { TYPES } from './data.js';
 import { ORIGIN, esc, store, api, toast, openModal, closeModal, track, copyText, inAppBrowser, navNow } from './ui.js';
-import { abTrack, abTag, abCode, abTagOfCode } from './ab.js';
+import { abTrack, abTag, abCode, abTagOfCode, setServerArm } from './ab.js';
 import { quizActive } from './quiz.js';
 import { pickPair } from './pairpick.js';
 
@@ -20,7 +20,11 @@ const FALLBACK = { enabled: false, plans: [{ id: 'solo', price: SITE.premiumPric
 let statusPromise;
 export const premiumStatus = () =>
   (statusPromise ??= api('premium/status').then((s) => {
-    if (s && !s.error) return s;
+    if (s && !s.error) {
+      // 価格のテストの今週の案（テストをしていなければ空）
+      setServerArm('price', s.arm);
+      return s;
+    }
     setTimeout(() => (statusPromise = null), 30000);
     return FALLBACK;
   }));
@@ -143,9 +147,10 @@ export async function openPaywall(r, { auto = false } = {}) {
   paywallShown = true;
   store.set('paywallSeen', true);
   track('paywall', auto ? 'view' : 'cta');
-  if (!auto) abTrack('cta');
   const gen = navNow();
   const s = await premiumStatus();
+  // 価格のテストの案が分かってから数える
+  if (!auto) abTrack('cta');
   if (gen !== navNow()) return;
   const pv = preview();
   const plans = s.plans.filter((p) => p.available);
@@ -216,8 +221,15 @@ function confirmPurchase(r, plan, s, rid = '', guardianAb = '') {
     const button = sheet.querySelector('#buy-go');
     button.disabled = true;
     // おうちの人の支払い（rid あり）は、子どもの端末のA/Bテストの案（リンクに入っている）で数える
-    const res = await api('checkout', { method: 'POST', body: { plan: plan.id, index: r?.index ?? null, rid, ab: rid ? guardianAb : abTag() }, timeout: 8000 });
+    // price は画面に出した価格。サーバーはこれとちがう額では決済を作らない
+    const res = await api('checkout', { method: 'POST', body: { plan: plan.id, price: plan.price, index: r?.index ?? null, rid, ab: rid ? guardianAb : abTag() }, timeout: 8000 });
     if (!res?.url) {
+      if (res?.error === 'price_changed') {
+        // 価格が切りかわった（価格のテストの週の切りかえ）。次に開いたときは新しい価格で出す
+        statusPromise = null;
+        msg.textContent = '価格が変わりました。いったん閉じて、もう一度開いてください';
+        return;
+      }
       msg.textContent = res?.error === 'rate' ? '少し待ってから、もう一度ためしてください' : 'いまは購入できません。時間をおいて試してください';
       button.disabled = false;
       return;
@@ -277,7 +289,8 @@ async function askGuardian(s) {
   }
   // リンクには、作った日（期限の確認用）と、この端末のA/Bテストの案を入れる。結果や回答は入れない
   const url = `${ORIGIN}/#/buy/${c.rid}/${linkStamp(c.at)}/${abCode()}`;
-  const text = `「${SITE.quizName}」の完全版（${priceOf(s)}円）を買ってもらえませんか？ このリンクから支払うと、このスマホで読めるようになります`;
+  // 価格のテスト中は、おうちの人が開く週に価格が変わることがあるので、価格は書かない（支払いの画面に出る）
+  const text = `「${SITE.quizName}」の完全版${s.arm ? '' : `（${priceOf(s)}円）`}を買ってもらえませんか？ このリンクから支払うと、このスマホで読めるようになります`;
   track('paywall', 'ask');
   openModal(`
     <h2 class="sheet-title">おうちの人に払ってもらう</h2>
@@ -547,7 +560,7 @@ export async function completePurchase(sid, { fromThanks = false } = {}) {
   if (!res?.token) {
     // 返金済み・期限切れ・ほかの商品なら、もう確かめない
     if (['revoked', 'expired', 'not_ours', 'bad_session'].includes(res?.error) || res?.session === 'expired') store.set('pendingSid', null);
-    return { ok: false, error: res?.error || 'network' };
+    return { ok: false, error: res?.error || 'network', session: res?.session || '' };
   }
   store.set('premiumToken', res.token);
   store.set('plan', res.plan || 'solo');
@@ -572,7 +585,14 @@ export async function retryPendingPurchase() {
     return false;
   }
   lastRetry = Date.now();
-  return (await completePurchase(p.sid)).ok;
+  const res = await completePurchase(p.sid);
+  // 決済の画面からブラウザの「戻る」で帰ってきた（まだ払っていない）。この決済では1回だけ、迷った理由を聞く
+  if (!res.ok && res.error === 'unpaid' && res.session === 'open' && Date.now() - p.at < HOUR && store.get('leftSid', null) !== p.sid) {
+    store.set('leftSid', p.sid);
+    noteCheckoutLeft();
+    if (!quizActive()) maybeShowCheckoutLeft();
+  }
+  return res.ok;
 }
 
 // 決済をやめて戻ってきたとき
@@ -580,7 +600,66 @@ export function cancelPurchase() {
   const back = store.get('returnHash', '#/');
   store.set('returnHash', null);
   store.set('pendingSid', null);
+  track('premium', 'cancel');
+  noteCheckoutLeft();
   return `/${back}`;
+}
+
+// ---------- 決済をやめた人へ ----------
+// 決済の画面で「戻る」を押した・ブラウザで戻った人に、1回だけ「どこで迷ったか」を聞き、選んだ理由に合わせて答える。
+// 選ばずに閉じてもいい。割引はしない（やめると安くなる、と覚えられると、買う人までやめるようになる）。
+// 出すのは、やめた直後の1回だけ。3日に1回まで
+const LEFT_REASONS = [
+  ['price', 'ちょっと高いかも'],
+  ['method', '使える払い方がない'],
+  ['guardian', 'おうちの人に聞いてから'],
+  ['content', '何が読めるのかよくわからない'],
+  ['later', 'いまはいいや'],
+];
+function noteCheckoutLeft() {
+  if (hasPremium() || Date.now() - store.get('leftAskedAt', 0) < 3 * DAY) return;
+  store.set('checkoutLeft', { at: Date.now() });
+}
+
+export async function maybeShowCheckoutLeft() {
+  const left = store.get('checkoutLeft', null);
+  if (!left) return;
+  store.set('checkoutLeft', null);
+  if (hasPremium() || Date.now() - left.at > HOUR) return;
+  store.set('leftAskedAt', Date.now());
+  const gen = navNow();
+  const s = await premiumStatus();
+  if (gen !== navNow() || !s.enabled) return;
+  const r = store.get('mine', null);
+  const price = priceOf(s);
+  const duo = s.plans.find((p) => p.id === 'duo' && p.available);
+  const sheet = openModal(`
+    <h2 class="sheet-title">どこで迷いましたか？</h2>
+    <p class="hint">ひとつ選ぶと、それに合わせてお答えします（選ばずに閉じても大丈夫です）。</p>
+    <div class="opts left-reasons">${LEFT_REASONS.map(([id, label]) => `<button class="opt" data-left="${id}"><span class="ot">${esc(label)}</span></button>`).join('')}</div>
+    <div class="left-answer" id="left-answer" aria-live="polite"></div>
+    <button class="linkish" data-close>とじる</button>`);
+  const answer = sheet.querySelector('#left-answer');
+  const again = '<button class="btn gold" data-left-again>完全版をもう一度見る</button>';
+  const ask = '<button class="btn sub" data-left-ask>おうちの人に払ってもらう</button>';
+  const ANSWERS = {
+    price: `<p>完全版は<b>${price}円の買い切り</b>です。月額や自動更新はありません。くわしい診断のレポート全8章が、全${TYPES.length}タイプ分（友達のタイプも）、ふたりの相性の完全版も何人とでも読めます。</p>
+      ${duo ? `<p>「ふたり用」（${duo.price}円）なら友達1人にプレゼントできるので、割り勘すると1人${Math.ceil(duo.price / 2)}円です。</p>` : ''}${again}`,
+    method: `<p>使える払い方は、${esc(methodsText(s))}です。</p><p>カードがなくても、<b>おうちの人のスマホで払ってもらえます</b>。あなたの診断結果や回答は、おうちの人には見えません。</p>${ask}${again}`,
+    guardian: `<p>下のボタンで、おうちの人に送るリンクを作れます。おうちの人のスマホで払うと、<b>このスマホで自動で開きます</b>。あなたの結果や回答は、おうちの人には見えません。</p>${ask}`,
+    content: `<p>完全版で読めるのは、次のとおりです。いま無料で読める第1章のつづきが、同じくらいのくわしさで7章あります。</p>
+      <ul class="includes">${INCLUDES.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>${again}`,
+    later: '<p>わかりました。結果はこの端末に保存されているので、いつでもこのページから続きを読めます。</p><button class="btn sub" data-close>とじる</button>',
+  };
+  sheet.querySelectorAll('[data-left]').forEach((b) =>
+    b.addEventListener('click', () => {
+      sheet.querySelectorAll('[data-left]').forEach((x) => x.classList.toggle('on', x === b));
+      track('left', b.dataset.left);
+      answer.innerHTML = ANSWERS[b.dataset.left];
+      answer.querySelector('[data-left-again]')?.addEventListener('click', () => openPaywall(r));
+      answer.querySelector('[data-left-ask]')?.addEventListener('click', () => askGuardian(s));
+    }),
+  );
 }
 
 // ページを開いたときに、購入直後の案内を一度だけ出す

@@ -1,7 +1,7 @@
 // 購入の記録（D1 の purchases・claims）。Webhook と /api/unlock の両方から呼ぶので、何度呼んでも同じ結果になるようにする。
 import { issueToken } from './token.js';
 import { sha256Hex } from './http.js';
-import { EXPERIMENTS } from './experiments.js';
+import { ALL_EXPERIMENTS } from './experiments.js';
 
 // このサイトが作った Checkout Session か（同じ Stripe アカウントのほかの商品では開けない）
 export const isOurSession = (s) => s?.metadata?.app === 'ponkotsu' && ['solo', 'duo'].includes(s?.metadata?.plan);
@@ -27,7 +27,7 @@ export function abTagsOf(raw) {
     .split(',')
     .filter((tag) => {
       const [name, variant] = tag.split(':');
-      if (!Object.hasOwn(EXPERIMENTS, name) || !EXPERIMENTS[name].includes(variant) || seen.has(name)) return false;
+      if (!Object.hasOwn(ALL_EXPERIMENTS, name) || !ALL_EXPERIMENTS[name].includes(variant) || seen.has(name)) return false;
       seen.add(name);
       return true;
     });
