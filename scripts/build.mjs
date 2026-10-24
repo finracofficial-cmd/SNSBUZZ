@@ -104,7 +104,11 @@ fs.writeFileSync(path.join(dist, 'robots.txt'), `User-agent: *\n${hiddenPaths.jo
 //   ・/thanks/ は決済のIDがURLに入るので、ほかのサイトにURLを送らず、キャッシュもしない
 // 広告（AdSense）を入れたときだけ、広告の配信元を足す（入れていないときは自分のサイトだけ）
 const ADS = !!SITE.ads?.client;
-const AD_HOSTS = 'https://pagead2.googlesyndication.com https://*.googlesyndication.com https://*.doubleclick.net https://*.google.com https://*.gstatic.com https://*.adtrafficquality.google';
+// 日本からのアクセスでは、国別のドメイン（adservice.google.co.jp など）にも取りに行く。*.google.com は google.com そのものにはあたらないので別に書く
+const AD_HOSTS = [
+  'https://pagead2.googlesyndication.com', 'https://*.googlesyndication.com', 'https://*.doubleclick.net', 'https://google.com', 'https://*.google.com',
+  'https://*.google.co.jp', 'https://*.googleadservices.com', 'https://*.googletagservices.com', 'https://*.gstatic.com', 'https://*.adtrafficquality.google',
+].join(' ');
 const CSP = [
   "default-src 'self'",
   `script-src 'self'${ADS ? ` ${AD_HOSTS}` : ''}`,

@@ -40,7 +40,7 @@ import {
   priceOf,
   methodsText,
 } from './premium.js';
-import { receiveRef } from './referral.js';
+import { receiveRef, sendPendingRef } from './referral.js';
 import { viewBiz } from './biz.js';
 
 // ---------- ホーム ----------
@@ -229,10 +229,13 @@ async function viewThanks(sid) {
 }
 
 // ---------- ルーティング ----------
+// 画面を描いている途中か（決済をやめた人へのシートを、描き直しで消されないよう、描き終えてから出すため）
+let routing = 0;
 async function route() {
   navBegin();
   closeModal();
   cancelQuiz();
+  routing++;
   try {
     await routeInner();
     // 決済をやめて戻ってきた直後なら、迷った理由を1回だけ聞く
@@ -240,6 +243,8 @@ async function route() {
   } catch {
     // 壊れたリンクなどで描けなかったときは、トップに戻す
     viewHome();
+  } finally {
+    routing--;
   }
 }
 
@@ -340,6 +345,7 @@ document.getElementById('modal').addEventListener('click', delegate);
   if (params.get('ch') === 'print') track('ref', 'print');
   // 紹介の番号（?r=…）。まだ診断していない人なら、あとで診断を終えたときにリンクをくれた人の1人に数える
   receiveRef(params);
+  sendPendingRef();
   // 再訪：結果を持っている端末が、別の日にまた開いたら1日1回だけ数える（いまの二つ名・今週のお題の効き目を見る）
   const today = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
   const lastVisit = store.get('lastVisit', null);
@@ -367,7 +373,11 @@ document.getElementById('modal').addEventListener('click', delegate);
   // 診断の途中なら、知らせるだけにして画面は描き直さない
   const retry = () =>
     retryPendingPurchase().then((ok) => {
-      if (!ok) return;
+      if (!ok) {
+        // ブラウザの「戻る」で決済から帰ってきた人。画面を描き終えていれば、ここで迷った理由を聞く（描いている途中なら route() が聞く）
+        if (!routing && !quizActive()) maybeShowCheckoutLeft();
+        return;
+      }
       toast('完全版を受け取りました');
       if (!quizActive()) route();
     });

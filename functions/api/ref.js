@@ -10,7 +10,8 @@ const VISITOR = /^[a-z2-7]{16}$/;
 
 export async function onRequestPost({ request, env }) {
   if (crossSite(request)) return json({ error: 'origin' }, 403);
-  if (await rateLimited(env, request, 'ref', 6)) return json({ error: 'rate' }, 429);
+  // 学校の Wi-Fi のように、同じIPからクラスみんなが一度に診断することもあるので、少しゆるめにする（届かなかった分は端末が送り直す）
+  if (await rateLimited(env, request, 'ref', 30)) return json({ error: 'rate' }, 429);
   const body = await readJson(request);
   if (!REF.test(body?.r || '') || !VISITOR.test(body?.v || '')) return json({ error: 'bad' }, 400);
   if (!env.DB) return json({ ok: true });

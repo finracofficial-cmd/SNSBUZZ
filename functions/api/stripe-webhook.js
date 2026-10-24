@@ -32,18 +32,21 @@ async function verify(payload, header, secret) {
 }
 
 // 返金した金額を、返金した月の売上から引けるように数える。charge.refunded の amount_refunded は累計なので、
-// 前に数えた分との差だけを足す（一部返金が2回あっても二重に数えない）
-async function recordRefundAmount(env, pi, total) {
+// 前に数えた分との差だけを足す（一部返金が2回あっても二重に数えない）。
+// 差の計算と記録は1つの batch（D1 では1つのトランザクション）の中でするので、同じ通知が同時に2回届いても二重に数えない。
+// 同じ Stripe アカウントのほかの商品の返金は数えない（このサイトの決済には payment_intent の metadata に app を入れている。
+// それより前の決済は、購入の記録があるかで見分ける）
+async function recordRefundAmount(env, charge) {
+  const pi = String(charge.payment_intent);
+  const total = Number(charge.amount_refunded);
   if (!Number.isFinite(total) || total <= 0) return;
-  const seen = await env.DB.prepare('SELECT n FROM counters WHERE k = ?1').bind(`refunded:${pi}`).first();
-  const delta = total - (seen?.n || 0);
-  if (delta <= 0) return;
-  const add = env.DB.prepare('INSERT INTO counters (k, n) VALUES (?1, ?2) ON CONFLICT(k) DO UPDATE SET n = n + ?2');
+  if (charge.metadata?.app !== 'ponkotsu' && !(await env.DB.prepare('SELECT 1 FROM purchases WHERE payment_intent = ?1').bind(pi).first())) return;
   const day = jstDay();
+  const keys = [`refund:${day.slice(0, 7)}`, `day:${day}:refund`];
   await env.DB.batch([
-    env.DB.prepare('INSERT INTO counters (k, n) VALUES (?1, ?2) ON CONFLICT(k) DO UPDATE SET n = ?2').bind(`refunded:${pi}`, total),
-    add.bind(`refund:${day.slice(0, 7)}`, delta),
-    add.bind(`day:${day}:refund`, delta),
+    env.DB.prepare('INSERT OR IGNORE INTO counters (k, n) VALUES (?1, 0), (?2, 0)').bind(...keys),
+    env.DB.prepare('UPDATE counters SET n = n + MAX(?3 - COALESCE((SELECT n FROM counters WHERE k = ?4), 0), 0) WHERE k IN (?1, ?2)').bind(...keys, total, `refunded:${pi}`),
+    env.DB.prepare('INSERT INTO counters (k, n) VALUES (?1, ?2) ON CONFLICT(k) DO UPDATE SET n = MAX(n, ?2)').bind(`refunded:${pi}`, total),
   ]);
 }
 
@@ -72,7 +75,7 @@ export async function onRequestPost({ request, env }) {
   if (event.type === 'checkout.session.completed' || event.type === 'checkout.session.async_payment_succeeded') {
     if (isOurSession(obj) && obj.payment_status === 'paid') await recordPurchase(env, obj);
   } else if (event.type === 'charge.refunded' && obj?.payment_intent) {
-    await recordRefundAmount(env, String(obj.payment_intent), Number(obj.amount_refunded));
+    await recordRefundAmount(env, obj);
     if (obj.refunded === true || Number(obj.amount_refunded) >= Number(obj.amount)) await revoke(env, String(obj.payment_intent), 'refund');
   } else if ((event.type === 'charge.dispute.created' || event.type === 'charge.dispute.updated') && obj?.payment_intent) {
     if (!String(obj.status || '').startsWith('warning_')) await revoke(env, String(obj.payment_intent), 'dispute');

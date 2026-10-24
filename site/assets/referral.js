@@ -30,12 +30,26 @@ export function receiveRef(params) {
   store.set('refBy', r);
 }
 
-// 診断を終えたとき（quiz.js）。その端末で初めての診断なら、リンクをくれた人に1人と数える
+// 診断を終えたとき（quiz.js）。その端末で初めての診断なら、リンクをくれた人に1人と数える。
+// 送れなかったとき（通信が切れた・同じ Wi-Fi から一度にたくさん）は印を残し、次に開いたときに送り直す（sendPendingRef）
 export function reportRef(firstTime) {
   const r = store.get('refBy', null);
   if (!firstTime || !REF.test(r || '') || store.get('refSent', false)) return;
-  store.set('refSent', true);
-  api('ref', { method: 'POST', body: { r, v: ownId('visitorId', 16) } });
+  store.set('refPending', true);
+  sendPendingRef();
+}
+let sending = false;
+export async function sendPendingRef() {
+  const r = store.get('refBy', null);
+  if (sending || !store.get('refPending', false) || store.get('refSent', false) || !REF.test(r || '')) return;
+  sending = true;
+  const res = await api('ref', { method: 'POST', body: { r, v: ownId('visitorId', 16) } });
+  sending = false;
+  // 形がちがう（400）ときは送り直しても通らないので、やめる
+  if ((res && !res.error) || res?.status === 400) {
+    store.set('refSent', true);
+    store.set('refPending', false);
+  }
 }
 
 const dots = (n) => Array.from({ length: REF_GOAL }, (_, k) => `<i class="${k < n ? 'on' : ''}"></i>`).join('');

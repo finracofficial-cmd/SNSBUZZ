@@ -17,6 +17,8 @@ export function variant(name) {
 const serverArms = {};
 export const setServerArm = (name, arm) => {
   if (SERVER_EXPERIMENTS[name]?.includes(arm)) serverArms[name] = arm;
+  // テストを止めた（案が空になった）ら、もう数えない
+  else delete serverArms[name];
 };
 
 // 段階は、その段階を見る実験にだけ送る。送った印は実験ごと（あとから足した実験も、正しく1回目を数える）。

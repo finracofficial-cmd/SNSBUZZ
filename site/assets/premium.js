@@ -16,10 +16,14 @@ import { pickPair } from './pairpick.js';
 const METHOD_NAMES = { card: 'クレジットカード（Apple Pay・Google Pay をふくむ）', paypay: 'PayPay' };
 const FALLBACK = { enabled: false, plans: [{ id: 'solo', price: SITE.premiumPrice, name: 'じぶん用', available: false }], methods: ['card'] };
 
-// 販売状況。取れなかったときは30秒だけ「準備中」として扱い、そのあと呼ばれたら取り直す
+// 販売状況。取れなかったときは30秒だけ「準備中」として扱い、そのあと呼ばれたら取り直す。
+// 取れたときも10分たったら取り直す（開きっぱなしのタブでも、価格テストの週の切りかえに追いつくように）
 let statusPromise;
-export const premiumStatus = () =>
-  (statusPromise ??= api('premium/status').then((s) => {
+let statusAt = 0;
+export const premiumStatus = () => {
+  if (statusPromise && Date.now() - statusAt > 10 * 60 * 1000) statusPromise = null;
+  if (!statusPromise) statusAt = Date.now();
+  return (statusPromise ??= api('premium/status').then((s) => {
     if (s && !s.error) {
       // 価格のテストの今週の案（テストをしていなければ空）
       setServerArm('price', s.arm);
@@ -28,6 +32,7 @@ export const premiumStatus = () =>
     setTimeout(() => (statusPromise = null), 30000);
     return FALLBACK;
   }));
+};
 export const methodsText = (s) => (s.methods || ['card']).map((m) => METHOD_NAMES[m]).filter(Boolean).join('・');
 export const priceOf = (s, id = 'solo') => s.plans?.find((p) => p.id === id)?.price ?? SITE.premiumPrice;
 
@@ -239,7 +244,8 @@ function confirmPurchase(r, plan, s, rid = '', guardianAb = '') {
     // やめて戻ってきたときの戻り先。おうちの人は、おうちの人のページへ（完了の画面には、受け取れたときだけ移る）
     store.set('returnHash', location.hash || '#/');
     // 決済のあと /thanks/ が開かなかったとき（アプリの切りかえ・タブを閉じた）も、次に開いたとき受け取れるように覚えておく
-    if (res.id) store.set('pendingSid', { sid: res.id, at: Date.now() });
+    // child：おうちの人の端末での、子どもの分の支払い（やめて戻っても「迷った理由」は聞かない）
+    if (res.id) store.set('pendingSid', { sid: res.id, at: Date.now(), child: !!rid });
     location.href = res.url;
   };
 }
@@ -586,11 +592,12 @@ export async function retryPendingPurchase() {
   }
   lastRetry = Date.now();
   const res = await completePurchase(p.sid);
-  // 決済の画面からブラウザの「戻る」で帰ってきた（まだ払っていない）。この決済では1回だけ、迷った理由を聞く
+  // 決済の画面からブラウザの「戻る」で帰ってきた（まだ払っていない）。この決済では1回だけ数えて、迷った理由を聞く印を付ける
+  // （シートを出すのは app.js。画面を描いている途中だと、描き直しで消えてしまうため）
   if (!res.ok && res.error === 'unpaid' && res.session === 'open' && Date.now() - p.at < HOUR && store.get('leftSid', null) !== p.sid) {
     store.set('leftSid', p.sid);
-    noteCheckoutLeft();
-    if (!quizActive()) maybeShowCheckoutLeft();
+    track('premium', 'cancel');
+    if (!p.child) noteCheckoutLeft();
   }
   return res.ok;
 }
@@ -598,10 +605,12 @@ export async function retryPendingPurchase() {
 // 決済をやめて戻ってきたとき
 export function cancelPurchase() {
   const back = store.get('returnHash', '#/');
+  const pending = store.get('pendingSid', null);
   store.set('returnHash', null);
   store.set('pendingSid', null);
   track('premium', 'cancel');
-  noteCheckoutLeft();
+  // おうちの人の端末（子どもの分の支払い）では聞かない。ここから自分の分を買ってしまわないように
+  if (!pending?.child && !String(back).startsWith('#/buy')) noteCheckoutLeft();
   return `/${back}`;
 }
 
@@ -621,15 +630,22 @@ function noteCheckoutLeft() {
   store.set('checkoutLeft', { at: Date.now() });
 }
 
+// 画面を描き終えてから呼ぶ（app.js）。待っているあいだに別の画面へ移ったり、ほかのシートが開いていたりしたら、
+// 印は残して次の画面で出す（出さないまま「3日に1回」を使い切らない）
 export async function maybeShowCheckoutLeft() {
   const left = store.get('checkoutLeft', null);
   if (!left) return;
-  store.set('checkoutLeft', null);
-  if (hasPremium() || Date.now() - left.at > HOUR) return;
-  store.set('leftAskedAt', Date.now());
+  if (hasPremium() || Date.now() - left.at > HOUR || location.hash.startsWith('#/buy')) {
+    store.set('checkoutLeft', null);
+    return;
+  }
   const gen = navNow();
   const s = await premiumStatus();
-  if (gen !== navNow() || !s.enabled) return;
+  const modal = document.getElementById('modal');
+  if (gen !== navNow() || !store.get('checkoutLeft', null) || (modal && !modal.hidden)) return;
+  store.set('checkoutLeft', null);
+  if (!s.enabled) return;
+  store.set('leftAskedAt', Date.now());
   const r = store.get('mine', null);
   const price = priceOf(s);
   const duo = s.plans.find((p) => p.id === 'duo' && p.available);

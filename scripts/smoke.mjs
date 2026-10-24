@@ -74,7 +74,8 @@ async function phone(width = 390) {
   const page = await context.newPage();
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => {
-    if (m.type() === 'error' && !m.text().includes('404')) errors.push(m.text());
+    // 404（APIなし）と 402（未払いの決済を確かめた）は、想定どおりの応答
+    if (m.type() === 'error' && !/status of 40[24]/.test(m.text()) && !m.text().includes('404')) errors.push(m.text());
   });
   return page;
 }
@@ -463,6 +464,52 @@ await fresh.context().close();
   await p.goto(`${base}/#/legal`);
   await p.waitForSelector('.facts', { timeout: 5000 });
   check((await p.textContent('.facts')).includes('週ごとに変わることがあります'), '価格のテスト中なのに、特商法の表記に価格が変わることを書いていない');
+  await p.context().close();
+}
+// ブラウザの「戻る」で決済から帰ってきた（未払い）：レポートを描き終えたあとに、迷った理由が1回だけ出て、消えない
+{
+  const p = await phone();
+  await p.route('**/api/premium/status', (r) =>
+    r.fulfill({ json: { enabled: true, arm: '', methods: ['card'], plans: [{ id: 'solo', price: 390, name: 'じぶん用', available: true }] } }),
+  );
+  await p.route('**/api/unlock?*', (r) => r.fulfill({ status: 402, json: { error: 'unpaid', session: 'open' } }));
+  await p.goto(`${base}/`);
+  const detail = await a.evaluate(() => localStorage.getItem('pz:mineDetail'));
+  const back = await a.evaluate(() => {
+    const m = JSON.parse(localStorage.getItem('pz:mineDetail'));
+    return `#/r/${m.code}/${m.shareId}`;
+  });
+  await p.evaluate((d) => {
+    localStorage.setItem('pz:mineDetail', d);
+    localStorage.setItem('pz:mine', d);
+    localStorage.setItem('pz:pendingSid', JSON.stringify({ sid: 'cs_test_backbutton000', at: Date.now() }));
+  }, detail);
+  // 決済の画面から戻ると、ページは読みこみ直しになる（同じページの中のハッシュの移動ではない）
+  await p.goto(`${base}/${back}`);
+  await p.reload();
+  await p.waitForSelector('.modal:not([hidden]) .left-reasons', { timeout: 6000 });
+  await p.waitForTimeout(1200);
+  check(!!(await p.$('.modal:not([hidden]) .left-reasons')), 'ブラウザの「戻る」で帰ってきた人の迷った理由が、描き直しで消えた');
+  await p.reload();
+  await p.waitForTimeout(1200);
+  check(!(await p.$('.modal:not([hidden]) .left-reasons')), 'ブラウザの「戻る」の人に、迷った理由が2回出た');
+  await p.context().close();
+}
+// おうちの人の端末（子どもの分の支払い）で決済をやめても、迷った理由は聞かない（ここから自分の分を買ってしまわないように）
+{
+  const p = await phone();
+  await p.route('**/api/premium/status', (r) =>
+    r.fulfill({ json: { enabled: true, arm: '', methods: ['card'], plans: [{ id: 'solo', price: 390, name: 'じぶん用', available: true }] } }),
+  );
+  await p.goto(`${base}/`);
+  await p.evaluate(() => {
+    localStorage.setItem('pz:returnHash', JSON.stringify('#/buy/abcdefghijklmnop'));
+    localStorage.setItem('pz:pendingSid', JSON.stringify({ sid: 'cs_test_parent000000', at: Date.now(), child: true }));
+  });
+  await p.goto(`${base}/thanks/?canceled=1`);
+  await p.waitForFunction(() => location.hash.startsWith('#/buy'), null, { timeout: 5000 });
+  await p.waitForTimeout(900);
+  check(!(await p.$('.modal:not([hidden]) .left-reasons')), 'おうちの人の端末で、迷った理由のシートが出た');
   await p.context().close();
 }
 

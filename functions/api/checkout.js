@@ -47,6 +47,8 @@ export async function onRequestPost({ request, env }) {
     locale: 'ja',
     'metadata[app]': 'ponkotsu',
     'metadata[plan]': plan,
+    // 返金の通知（charge.refunded）で、このサイトの決済かを見分けるため。PaymentIntent の metadata は Charge にも写る
+    'payment_intent_data[metadata][app]': 'ponkotsu',
     'custom_text[submit][message]': SUBMIT_NOTE,
     // 決済の画面は60分で切れる（やめた決済を、端末がいつまでも確かめに行かないように）
     expires_at: String(Math.floor(Date.now() / 1000) + 3600),

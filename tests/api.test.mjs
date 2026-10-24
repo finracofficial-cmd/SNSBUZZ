@@ -155,6 +155,7 @@ test('決済の開始：Stripeの価格と画面の価格がちがえば止め�
     assert.equal(form.get('client_reference_id'), rid);
     assert.equal(form.get('metadata[plan]'), 'solo');
     assert.equal(form.get('metadata[app]'), 'ponkotsu');
+    assert.equal(form.get('payment_intent_data[metadata][app]'), 'ponkotsu', '返金の通知で見分けるため');
     assert.equal(form.get('metadata[type]'), '3');
     assert.equal(form.get('payment_method_types[0]'), 'card');
     assert.equal(form.get('payment_method_types[1]'), null);
@@ -318,8 +319,13 @@ test('Webhook：署名を確かめて購入と受け取りを記録し、返金�
   // 申し立てに勝っても、返金済みなら戻さない
   await send({ type: 'charge.dispute.closed', data: { object: { payment_intent: 'pi_parent', status: 'won' } } });
   assert.equal((await premiumGet({ request: req('/api/premium?i=1', bearer(claimed.token)), env })).status, 403);
-  // 購入の記録より先に返金が届いても、取りこぼさない
-  await send({ type: 'charge.refunded', data: { object: { payment_intent: 'pi_early', refunded: true, amount: 390, amount_refunded: 390 } } });
+  // 同じ Stripe アカウントのほかの商品の返金は、売上から引かない
+  await send({ type: 'charge.refunded', data: { object: { payment_intent: 'pi_someone_else', refunded: true, amount: 5000, amount_refunded: 5000 } } });
+  assert.equal(counter(DB, `refund:${month()}`), 390, 'ほかの商品の返金を数えた');
+  assert.equal(counter(DB, 'refunded:pi_someone_else'), 0);
+  // 購入の記録より先に返金が届いても、取りこぼさない（このサイトの決済は metadata の app で見分けて、金額も数える）
+  await send({ type: 'charge.refunded', data: { object: { payment_intent: 'pi_early', refunded: true, amount: 390, amount_refunded: 390, metadata: { app: 'ponkotsu' } } } });
+  assert.equal(counter(DB, `refund:${month()}`), 780);
   await send({ type: 'checkout.session.completed', data: { object: { id: 'cs_test_early0000000', ...paid('solo', { payment_intent: 'pi_early' }) } } });
   const early = await issueToken(env, 'cs_test_early0000000');
   assert.equal((await premiumGet({ request: req('/api/premium?i=1', bearer(early)), env })).status, 403, '先に届いた返金も効く');
@@ -624,8 +630,8 @@ test('紹介：同じ友達は1回だけ数え、人数を返す。形のちが�
   assert.equal((await refPost({ request: post('/api/ref', { r, v: 'short' }), env })).status, 400);
   assert.equal((await refPost({ request: post('/api/ref', { r, v: v(6) }, { origin: 'https://evil.example' }), env })).status, 403);
   assert.equal((await refGet({ request: req('/api/ref?r=bad'), env })).status, 400);
-  // 1つのIPからは1分に6回まで
+  // 1つのIPからは1分に30回まで
   const codes = [];
-  for (let k = 0; k < 8; k++) codes.push((await refPost({ request: post('/api/ref', { r, v: `spam${k}aaaaaaaaaaaa`.slice(0, 16) }, { 'cf-connecting-ip': '10.9.9.9' }), env })).status);
+  for (let k = 0; k < 32; k++) codes.push((await refPost({ request: post('/api/ref', { r, v: `spam${k}aaaaaaaaaaaa`.slice(0, 16) }, { 'cf-connecting-ip': '10.9.9.9' }), env })).status);
   assert.deepEqual(codes.filter((c) => c === 429).length, 2);
 });
