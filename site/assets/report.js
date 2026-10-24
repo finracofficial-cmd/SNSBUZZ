@@ -18,6 +18,7 @@ import { canRecordVideo, recordReveal } from './video.js';
 import { nowCard, bindNowCard, keepNowFresh } from './now.js';
 import { variant, abTrack } from './ab.js';
 import { mosaic, approx } from './mosaic.js';
+import { referCard, bindReferCard } from './referral.js';
 
 const typePath = (index) => `#/t/${typeNo(index).toLowerCase()}`;
 
@@ -192,6 +193,7 @@ export async function viewReport(r, shareId) {
     ${premiumChapters(r, prem)}
     ${prem ? '' : `<p class="hint center">※モザイクはイメージです。購入すると、モザイクの部分の文章が読めるようになります（「約○字」はおおよその文字数です）。</p>`}
     ${nowCard(r.index)}
+    ${referCard()}
     <section class="card"><h2>もっと遊ぶ</h2>
       <div class="btn-col">
         <a class="btn sub" href="${typePath(r.index)}">${esc(t.label)}の解説（性格・恋愛・友達・学校・トリセツ）</a>
@@ -206,6 +208,7 @@ export async function viewReport(r, shareId) {
     ${prem || failed ? '' : paybar(locked, price)}`, r.index);
 
   document.body.classList.toggle('has-paybar', !prem && !failed);
+  bindReferCard({ ...r, title, rarity, nickname: r.nickname.text, loveName: love.name }, { url, text, gen, navNow });
   app.querySelector('[data-reload]')?.addEventListener('click', () => viewReport(r, shareId));
   app.querySelector('[data-gift]')?.addEventListener('click', openGift);
   app.querySelectorAll('[data-scroll]').forEach((b) =>

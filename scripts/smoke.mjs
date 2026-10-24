@@ -15,6 +15,7 @@ const executablePath = process.env.CHROMIUM_PATH || '/opt/pw-browsers/chromium-1
 fs.mkdirSync(outDir, { recursive: true });
 
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png' };
+const refPosts = [];
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://x');
   // 今週のお題だけ、決まった集計を返す（ほかのAPIは無い扱い）
@@ -28,6 +29,22 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { 'content-type': 'application/json' });
     const codes = ['3~-5_-1_3_5', 'f~9_9_9_9', '0~-7_-9_-9_-9', 'a~9_-9_9_-9'];
     res.end(JSON.stringify({ name: 'いつメン', admin: false, locked: false, expiresAt: Date.now() + 864e5, members: codes.map((code, k) => ({ handle: `hd00000${k}`, nick: ['ゆう', 'あお', 'りん', 'はる'][k], code, mine: false })) }));
+    return;
+  }
+  // 紹介：届いた {r, v} を覚えて、人数を返す（本物と同じく、同じ v は1回だけ）
+  if (url.pathname === '/api/ref') {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    if (req.method === 'POST') {
+      let body = '';
+      req.on('data', (d) => (body += d));
+      req.on('end', () => {
+        refPosts.push(JSON.parse(body));
+        res.end('{"ok":true}');
+      });
+      return;
+    }
+    const r = url.searchParams.get('r');
+    res.end(JSON.stringify({ n: new Set(refPosts.filter((p) => p.r === r).map((p) => p.v)).size }));
     return;
   }
   if (url.pathname.startsWith('/api/')) {
@@ -309,6 +326,9 @@ const quickShare = await a.getAttribute('.share-row [data-copy]', 'data-copy');
 const shareUrl = new URL(quickShare.split('\n').pop());
 check(shareUrl.searchParams.get('f') === mineQuick.code.split('~').slice(0, 2).join('~'), `シェアURLに結果が入っていない: ${shareUrl}`);
 check(!shareUrl.searchParams.has('n'), 'シェアURLに名前が入っている');
+// 2人目（相性のおさそいから来て診断した）は、もう紹介に数えられている
+const refBefore = refPosts.length;
+check(refBefore === 1, `おさそいリンクから診断した友達が紹介に数えられていない: ${refBefore}`);
 const c = await phone();
 await c.goto(`${base}${shareUrl.pathname}${shareUrl.search}`);
 await c.waitForSelector('.invite', { timeout: 5000 });
@@ -318,6 +338,30 @@ await answer(c, 12, (i) => (i * 3 + 1) % 4);
 await c.waitForSelector('.pairbox', { timeout: 8000 });
 check((await c.textContent('.pairbox h2')).includes('シェアしてくれた友達'), 'シェアURLから来た人に相性が出ない');
 await shot(c, '15c-share-pair');
+// 紹介：シェアURLに入っている番号で、初めて診断した友達として1人数える。やり直しは数えない
+const refId = shareUrl.searchParams.get('r');
+check(/^[a-z2-7]{10}$/.test(refId || ''), `シェアURLに紹介の番号がない: ${shareUrl}`);
+const added = refPosts.slice(refBefore);
+check(added.length === 1 && added[0].r === refId && refPosts[0].r === refId && /^[a-z2-7]{16}$/.test(added[0].v) && added[0].v !== refPosts[0].v, `紹介が数えられていない: ${JSON.stringify(refPosts)}`);
+await c.goto(`${base}/#/q`);
+await answer(c, 12, () => 0);
+await c.waitForSelector('.result .label', { timeout: 8000 });
+check(refPosts.length === refBefore + 1, '2回目の診断も紹介に数えた');
+await a.goto(`${base}/#/r/${mineQuick.code}/${mineQuick.shareId}`);
+await a.waitForFunction(() => document.querySelector('[data-ref-count]')?.textContent.includes('2人'), null, { timeout: 5000 });
+// 3人に届いたら、虹色カードを保存できる
+{
+  const p = await phone();
+  await p.route('**/api/ref?*', (r) => r.fulfill({ json: { n: 3 } }));
+  await p.goto(`${base}/#/r/${mineQuick.code}/${mineQuick.shareId}`);
+  await p.waitForSelector('[data-rainbow]:not([hidden])', { timeout: 5000 });
+  check((await p.textContent('[data-refer-title]')).includes('もらいました'), '3人で虹色カードの表示にならない');
+  await p.locator('[data-refer]').scrollIntoViewIfNeeded();
+  await shot(p, '15d-refer-done', false);
+  await p.click('[data-rainbow]');
+  await saveModalImage(p, '15e-rainbow-card');
+  await p.context().close();
+}
 
 // 図鑑・タイプページ・隠しタイプ
 await b.goto(`${base}/#/zukan`);

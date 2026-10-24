@@ -602,3 +602,11 @@ table.kpi.money td:last-child { overflow-wrap: anywhere; }
 .left-answer { margin: 4px 0 12px; padding: 14px; border-radius: 14px; background: var(--bg); }
 .left-answer p { margin: 0 0 10px; text-align: left; }
 .left-answer .includes { margin: 0 0 12px; }
+
+/* 紹介（友達3人で虹色カード） */
+.refer h2 { margin-bottom: 6px; }
+.ref-dots { display: flex; justify-content: center; gap: 14px; margin: 14px 0 6px; }
+.ref-dots i { width: 22px; height: 22px; border-radius: 50%; border: 3px solid var(--line); background: #fff; }
+.ref-dots i.on { border-color: #fff; box-shadow: 0 0 0 2px #C9B8F5; background: linear-gradient(135deg, #FF8A8A, #FFC56E, #8FE3A1, #7CC8FF, #B79CFF); }
+.refer.done { background: linear-gradient(#FFFDF9, #FFFDF9) padding-box, linear-gradient(135deg, #FF8A8A, #FFC56E, #FFE97A, #8FE3A1, #7CC8FF, #B79CFF) border-box; border: 3px solid transparent; }
+.btn.rainbow { background: linear-gradient(90deg, #FF8A8A, #FFC56E, #FFE97A, #8FE3A1, #7CC8FF, #B79CFF); color: var(--ink); box-shadow: 0 4px 0 #9C84D9; }

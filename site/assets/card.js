@@ -100,7 +100,8 @@ export function fitFont(ctx, text, weight, start, min, maxWidth) {
 export const hostOf = (origin) => origin.replace(/^https?:\/\//, '').replace(/\/$/, '');
 
 // ストーリーズ・TikTok用 1080×1920
-export async function drawStoryCard({ index, purity, title, rarity, gold = false, nickname = '', loveName = '' }) {
+// gold＝完全版の購入者の金の枠、rainbow＝友達3人が自分のリンクから診断した人の虹色の枠（referral.js）
+export async function drawStoryCard({ index, purity, title, rarity, gold = false, rainbow = false, nickname = '', loveName = '' }) {
   const t = TYPES[index];
   const W = 1080;
   const H = 1920;
@@ -108,7 +109,7 @@ export async function drawStoryCard({ index, purity, title, rarity, gold = false
   canvas.width = W;
   canvas.height = H;
   const ctx = canvas.getContext('2d');
-  await ensureFonts(`${SITE.name}${SITE.quizName}${t.label}${t.praise}${t.roast}${TYPES[t.best].label}${nickname}${loveName}診断結果はタイプ診断した人の純度出現率レア度計算上の値相性恋愛あなたは何？二つ名%0123456789.No`);
+  await ensureFonts(`${SITE.name}${SITE.quizName}${t.label}${t.praise}${t.roast}${TYPES[t.best].label}${nickname}${loveName}診断結果はタイプ診断した人の純度出現率レア度計算上の値相性恋愛あなたは何？二つ名なかま人RAINBOW%0123456789.No`);
 
   const bg = ctx.createLinearGradient(0, 0, 0, H);
   bg.addColorStop(0, tint(t.color, 0.72));
@@ -129,7 +130,23 @@ export async function drawStoryCard({ index, purity, title, rarity, gold = false
   roundRect(ctx, 60, 70, W - 120, H - 140, 56);
   ctx.fillStyle = '#FFFDF9';
   ctx.fill();
-  if (gold) {
+  if (rainbow) {
+    // 友達3人が自分のリンクから診断した人だけが保存できる虹色の枠
+    const g = ctx.createLinearGradient(0, 0, W, H);
+    ['#FF8A8A', '#FFC56E', '#FFE97A', '#8FE3A1', '#7CC8FF', '#B79CFF', '#FF9AD5'].forEach((c, k, a) => g.addColorStop(k / (a.length - 1), c));
+    ctx.lineWidth = 24;
+    ctx.strokeStyle = g;
+    ctx.stroke();
+    const badge = 'RAINBOW・なかま3人';
+    ctx.font = `800 30px ${FONT}`;
+    const bw = ctx.measureText(badge).width + 64;
+    roundRect(ctx, W / 2 - bw / 2, 52, bw, 52, 26);
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.fillStyle = INK;
+    ctx.textAlign = 'center';
+    ctx.fillText(badge, W / 2, 89);
+  } else if (gold) {
     // 完全版の購入者だけが保存できる金の枠
     const g = ctx.createLinearGradient(0, 0, W, H);
     ['#B8862B', '#F7E08A', '#C9973A', '#FFF1B8', '#B8862B'].forEach((c, k) => g.addColorStop(k / 4, c));

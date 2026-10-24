@@ -59,3 +59,12 @@ CREATE TABLE IF NOT EXISTS claims (
   token TEXT NOT NULL,
   created_at INTEGER NOT NULL
 );
+
+-- 紹介：ref（シェアした人の端末のランダムな番号）のリンクから、visitor（友達の端末のランダムな番号）が初めて診断を終えた。
+-- 1人の友達は1回だけ数える。個人を特定する情報は入れない
+CREATE TABLE IF NOT EXISTS refs (
+  ref TEXT NOT NULL,
+  visitor TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (ref, visitor)
+);

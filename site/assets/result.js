@@ -13,6 +13,7 @@ import { canRecordVideo, recordReveal } from './video.js';
 import { nowCard, bindNowCard, keepNowFresh } from './now.js';
 import { adSlot, fillAds } from './ads.js';
 import { picksCard } from './picks.js';
+import { myRef, referCard, bindReferCard } from './referral.js';
 import { pollCard, bindPoll } from './polls.js';
 import { exportPayload, importPayload } from './carryover.js';
 import { app, ORIGIN, esc, jp, store, track, loadStats, render, toast, foot, brand, shareLinks, shareImageBlob, shareImageSet, openModal, closeModal, inAppHint, navNow, busy, copySilently, copyText, shareVideo } from './ui.js';
@@ -24,8 +25,9 @@ export const typePath = (index) => `#/t/${typeNo(index).toLowerCase()}`;
 
 // シェアURLには、かんたん診断の結果（タイプと4軸の合計だけ）を入れる。
 // 開いた人が診断すると、シェアした人との相性が自動で出る（名前は入れない）
+// r は紹介の番号（このリンクから友達が診断すると、虹色カードまでの1人に数える。referral.js）
 export const shareUrl = (r, shareId) =>
-  `${ORIGIN}/t/${typeNo(r.index).toLowerCase()}/?${new URLSearchParams({ s: shareId, f: quickCodeOf(encodeResult(r)) })}`;
+  `${ORIGIN}/t/${typeNo(r.index).toLowerCase()}/?${new URLSearchParams({ s: shareId, f: quickCodeOf(encodeResult(r)), r: myRef() })}`;
 // 「でも…」で始まる痛い一行は、それだけだと前の文が欠けて見えるので、頭の「でも」を外して使う
 export const roastAlone = (t) => t.roast.replace(/^でも、?/, '');
 
@@ -206,6 +208,7 @@ export async function viewResult(r, shareId) {
       </div>
       <button class="btn sub small wide" data-sticker>シール帳用のシール（コンビニで印刷・L判）</button>
     </section>
+    ${referCard()}
     <div class="tiles">
       <div class="tile"><b>ポンコツ純度</b><strong>${r.purity}%</strong><small>${esc(title)}</small></div>
       <div class="tile" data-rarity>${rarityTile(rarity)}</div>
@@ -281,6 +284,7 @@ export async function viewResult(r, shareId) {
   keepNowFresh(r.index, gen, navNow);
   bindPoll(gen, navNow);
   bindSticker(r, url);
+  bindReferCard(ctx, { url, text, gen, navNow });
   fillAds(app);
 }
 

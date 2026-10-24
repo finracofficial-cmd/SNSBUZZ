@@ -6,6 +6,7 @@ import { judge, encodeResult, rankOf, paramLevel, LEVEL_NAMES } from './logic.js
 import { charaSVG } from './chara.js';
 import { app, esc, jp, store, track, loadStats, render, toast, navNow } from './ui.js';
 import { variant, abTrack } from './ab.js';
+import { reportRef } from './referral.js';
 
 // 選択肢は、いつも「控えめ → 全開」の順（点数の小さい順）に上から並べる。
 // 並びがばらばらだと、4つ全部を読んで頭の中で並べかえないと選べない（「選びにくい」という声があった）。
@@ -205,6 +206,8 @@ function finish() {
     store.set('mineQuick', { index: r.index, code: code.split('~').slice(0, 2).join('~'), shareId });
     store.set('mineDetail', { index: r.index, code, shareId });
   }
+  // リンクをくれた友達の紹介に数えるのは、この端末で初めての診断だけ
+  reportRef(!store.get('mine', null));
   store.set('mine', { index: r.index, code, shareId, mode: r.mode });
   if (isHidden(r.index)) store.set('gotHidden', [...new Set([...store.get('gotHidden', []), r.index])]);
   loadStats();

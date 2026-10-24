@@ -18,6 +18,7 @@ import { onRequestPost as adoptPost } from '../functions/api/adopt.js';
 import { onRequestPost as webhookPost } from '../functions/api/stripe-webhook.js';
 import { onRequestPost as eventPost } from '../functions/api/event.js';
 import { onRequestGet as statsGet } from '../functions/api/stats.js';
+import { onRequestGet as refGet, onRequestPost as refPost } from '../functions/api/ref.js';
 import { onRequestPost as groupCreate } from '../functions/api/groups/index.js';
 import { onRequestGet as groupGet, onRequestPost as groupJoin, onRequestDelete as groupDelete } from '../functions/api/groups/[id].js';
 import { PREMIUM, PARAM_DETAIL, LOVE_DETAIL } from '../functions/_lib/premium.js';
@@ -606,4 +607,25 @@ test('ふたりの相性・完全版：購入トークンがあるときだけ�
   const free = fs.readFileSync('site/assets/types.js', 'utf8');
   assert.ok(!free.includes(PAIR.axes[0].diff.slice(0, 20)), '有料の文が無料のファイルに入っていない');
   assert.equal(PAIR_LEN.axes[0].diff, Array.from(PAIR.axes[0].diff).length);
+});
+
+test('紹介：同じ友達は1回だけ数え、人数を返す。形のちがう番号・別サイトからの送信は受けつけない', async () => {
+  const DB = fakeD1();
+  const env = { DB };
+  const r = 'abcdefgh23';
+  const v = (k) => `visitor${k}abcdefgh`.slice(0, 16);
+  const count = async (id = r) => (await (await refGet({ request: req(`/api/ref?r=${id}`), env })).json()).n;
+  assert.equal(await count(), 0);
+  for (const k of [2, 3, 3, 4]) assert.equal((await refPost({ request: post('/api/ref', { r, v: v(k) }, { 'cf-connecting-ip': `10.0.0.${k}` }), env })).status, 200);
+  assert.equal(await count(), 3, '同じ友達（v）は1回だけ');
+  assert.equal(counter(DB, 'ref:done'), 3);
+  assert.equal(await count('zzzzzzzzzz'), 0);
+  assert.equal((await refPost({ request: post('/api/ref', { r: 'ABC', v: v(5) }), env })).status, 400);
+  assert.equal((await refPost({ request: post('/api/ref', { r, v: 'short' }), env })).status, 400);
+  assert.equal((await refPost({ request: post('/api/ref', { r, v: v(6) }, { origin: 'https://evil.example' }), env })).status, 403);
+  assert.equal((await refGet({ request: req('/api/ref?r=bad'), env })).status, 400);
+  // 1つのIPからは1分に6回まで
+  const codes = [];
+  for (let k = 0; k < 8; k++) codes.push((await refPost({ request: post('/api/ref', { r, v: `spam${k}aaaaaaaaaaaa`.slice(0, 16) }, { 'cf-connecting-ip': '10.9.9.9' }), env })).status);
+  assert.deepEqual(codes.filter((c) => c === 429).length, 2);
 });

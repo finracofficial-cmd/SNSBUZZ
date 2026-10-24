@@ -9,6 +9,7 @@ import { app, ORIGIN, esc, cleanName, store, track, api, render, toast, openModa
 import { jstParts } from './clock.js';
 import { pickPair } from './pairpick.js';
 import { mosaic, approx } from './mosaic.js';
+import { myRef } from './referral.js';
 import { hasPremium, previewUnlocked, fetchPair, openPaywall, premiumStatus, priceOf } from './premium.js';
 
 // ---------- 出会ったタイプ（図鑑のコンプリート用） ----------
@@ -32,7 +33,7 @@ export const friends = () =>
 
 // ---------- おさそいリンク ----------
 export function inviteUrl(result, name) {
-  const params = new URLSearchParams({ f: quickCodeOf(encodeResult(result)), n: cleanName(name) || '友達' });
+  const params = new URLSearchParams({ f: quickCodeOf(encodeResult(result)), n: cleanName(name) || '友達', r: myRef() });
   return `${ORIGIN}/i/${typeNo(result.index).toLowerCase()}/?${params}`;
 }
 

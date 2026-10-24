@@ -40,6 +40,7 @@ import {
   priceOf,
   methodsText,
 } from './premium.js';
+import { receiveRef } from './referral.js';
 
 // ---------- ホーム ----------
 // 実数は、十分にたまってから・上2けたで切り捨てて出す（盛った数字や、自動で増える演出はしない）。
@@ -335,6 +336,8 @@ document.getElementById('modal').addEventListener('click', delegate);
   const page = document.body.dataset.page;
   if (params.has('s')) track('ref', '1');
   if (params.get('ch') === 'print') track('ref', 'print');
+  // 紹介の番号（?r=…）。まだ診断していない人なら、あとで診断を終えたときにリンクをくれた人の1人に数える
+  receiveRef(params);
   // 再訪：結果を持っている端末が、別の日にまた開いたら1日1回だけ数える（いまの二つ名・今週のお題の効き目を見る）
   const today = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
   const lastVisit = store.get('lastVisit', null);

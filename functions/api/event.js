@@ -4,7 +4,7 @@ import { ALL_EXPERIMENTS, metricsOf } from '../_lib/experiments.js';
 
 const SHARE = [
   'x', 'line', 'link', 'native', 'invite', 'quiz',
-  'image', 'label-image', 'gold-image', 'pair-image', 'nick-image', 'status-image', 'prof-image', 'carousel', 'carousel-feed', 'wallpaper', 'text', 'video', 'now-nick', 'group-text', 'sticker',
+  'image', 'label-image', 'gold-image', 'pair-image', 'nick-image', 'status-image', 'prof-image', 'carousel', 'carousel-feed', 'wallpaper', 'text', 'video', 'now-nick', 'group-text', 'sticker', 'rainbow-image',
 ];
 const ALLOWED = {
   start: () => '',
