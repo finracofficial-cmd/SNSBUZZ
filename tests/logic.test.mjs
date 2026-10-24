@@ -385,3 +385,12 @@ test('日本語の改行：文節の切れ目だけで折り返し、単語や�
     });
   }
 });
+
+test('LINEスタンプ：40個・全タイプ2個ずつ・1行は7文字まで・同じセリフなし', async () => {
+  const { STAMPS } = await import('../scripts/stamps.mjs');
+  const { TYPES } = await import('../site/assets/data.js');
+  assert.equal(STAMPS.length, 40);
+  TYPES.forEach((_, i) => assert.equal(STAMPS.filter(([k]) => k === i).length, 2, `タイプ${i}`));
+  STAMPS.forEach(([, text]) => assert.ok(text.split('\n').every((l) => [...l].length <= 7) && text.split('\n').length <= 2, text));
+  assert.equal(new Set(STAMPS.map(([, t]) => t)).size, 40);
+});

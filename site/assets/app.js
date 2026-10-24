@@ -41,6 +41,7 @@ import {
   methodsText,
 } from './premium.js';
 import { receiveRef } from './referral.js';
+import { viewBiz } from './biz.js';
 
 // ---------- ホーム ----------
 // 実数は、十分にたまってから・上2けたで切り捨てて出す（盛った数字や、自動で増える演出はしない）。
@@ -293,6 +294,7 @@ async function routeInner() {
     if (!(await viewPollWeek(a || '', { render, brand, foot, navNow }))) await viewHome();
   } else if (view === 'admin') await viewAdmin();
   else if (view === 'about') viewAbout();
+  else if (view === 'biz') await viewBiz();
   else if (view === 'legal') await viewLegal();
   else if (!location.hash && page === 'types') {
     // 全タイプ一覧は、書き出した静的なページをそのまま使う

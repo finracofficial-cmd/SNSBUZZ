@@ -10,7 +10,8 @@
     "build": "node scripts/gen-content.mjs && node scripts/build.mjs",
     "serve": "node scripts/serve.mjs",
     "smoke": "node scripts/smoke.mjs",
-    "cards": "node scripts/cards.mjs"
+    "cards": "node scripts/cards.mjs",
+    "stamps": "node scripts/stamps.mjs"
   },
   "devDependencies": {
     "esbuild": "0.25.12",

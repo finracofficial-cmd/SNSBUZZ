@@ -243,7 +243,7 @@ export async function copyText(text) {
 
 export const foot = () => `
   <p class="foot">${esc(SITE.disclaimer)}<br>
-    <a href="#/">トップ</a><a href="#/zukan">図鑑</a><a href="#/about">このサイトについて</a><a href="#/legal">特定商取引法に基づく表記</a>
+    <a href="#/">トップ</a><a href="#/zukan">図鑑</a><a href="#/about">このサイトについて</a><a href="#/legal">特定商取引法に基づく表記</a><a href="#/biz">法人・学校の方へ</a>
   </p>`;
 
 export const brand = () => `<div class="brand"><a href="#/">${esc(SITE.name)}</a><a href="#/zukan">図鑑をみる →</a></div>`;

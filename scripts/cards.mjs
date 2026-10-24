@@ -1,14 +1,15 @@
 // SNS運用で使う画像を書き出す（リポジトリには入れない）。
 //   cards/intro/NN.png … タイプ紹介スライド（TikTok・Instagramのカルーセル用）
 //   cards/story/NN.png … 診断結果のシェア画像の見本（純度87%・理論値で固定）
-// 使い方: npm run build && npm run cards [出力先]
+// 使い方: npm run content && npm run cards [出力先]
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { chromium } from 'playwright-core';
 import { TYPES, typeNo } from '../site/assets/data.js';
 
-const dist = path.resolve('dist');
+// ビルド後の dist はひとまとめにしてあるので、モジュールを1つずつ読める site/ を配る
+const dist = path.resolve('site');
 const out = path.resolve(process.argv[2] || 'cards');
 const executablePath = process.env.CHROMIUM_PATH || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png' };
